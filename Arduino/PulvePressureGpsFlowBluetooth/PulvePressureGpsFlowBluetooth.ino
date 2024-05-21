@@ -3,8 +3,10 @@
 #include <algorithm>
 #include <Wire.h>
 #include <TinyGPS++.h>
+#include <Preferences.h>
 
 HardwareSerial neogps(1);
+Preferences preferences;
 
 TinyGPSPlus gps;
 
@@ -22,6 +24,8 @@ unsigned long startMillisPressure;
 unsigned long currentMillisPressure;
 const unsigned long periodPressure = 20;
 String  bluetoothMsg = "";  //Message sent through Bluetooth
+String messageRecu;
+unsigned int valeurRecue;
 
 //#define USE_PIN // Uncomment this to use PIN during pairing. The pin is specified on the line below
 const char *pin = "1234"; // Change this to more secure PIN.
@@ -42,8 +46,12 @@ long NombreDimpulsions2 = 0;
 float debit1;
 float debit2;
 unsigned long timer;
-const int NbImpulsionsDebitmetre1 = 980;  //Flowmeter pulses
-const int NbImpulsionsDebitmetre2 = 980;  //Flowmeter pulses
+int NbImpulsionsDebitmetre1 = 1000;  //Pulses debitmetre gauche
+int NbImpulsionsDebitmetre2 = 1000;  //Pulses debitmetre droit
+int correctionManometre = 0;  //Correction manometre
+unsigned int constDeb1;
+unsigned int constDeb2;
+unsigned int constMan;
 
 const int n = 20; // Nombre de valeurs à prendre en compte
 int mesures[n];   // Tableau pour stocker les mesures
@@ -52,6 +60,12 @@ int ind = 0;    // Indice actuel dans le tableau
 // variables for sensor
 int val, prescbar;
 float pressure, voltage, sat, lon, llat, sspeed;
+
+char receivedChars[32];  // Variable to store the received data
+char message[16];        // Variable to store the part before the ':'
+char value[16];          // Variable to store the part after the ':'
+
+bool newData = false;
 
 #if !defined(CONFIG_BT_ENABLED) || !defined(CONFIG_BLUEDROID_ENABLED)
 #error Bluetooth is not enabled! Please run `make menuconfig` to and enable it
@@ -80,13 +94,29 @@ void setup() {
     SerialBT.setPin(pin);
     Serial.println("Using PIN");
   #endif
-  
+
   // Broche du débitmètre en INPUT_PULLUP
   pinMode(debitmetre1, INPUT_PULLUP);
   pinMode(debitmetre2, INPUT_PULLUP);
   // Mettre la broche du débimetre en interrupt, assignation de la fonction comptage et réglage en FALLING (NPN)
   attachInterrupt(digitalPinToInterrupt(debitmetre1), comptage1, FALLING);  // a chaque interruption lance comptage1
   attachInterrupt(digitalPinToInterrupt(debitmetre2), comptage2, FALLING);  // a chaque interruption lance comptage2
+
+  //Récupération des constantes et stockage
+  preferences.begin("constantes", false);
+  constDeb1 = preferences.getUInt("constDeb1", 0);
+  constDeb2 = preferences.getUInt("constDeb2", 0);
+  constMan = preferences.getUInt("constMan", 0);
+  preferences.end();
+  if (constDeb1 != 0) {
+    NbImpulsionsDebitmetre1 = constDeb1;
+  }
+  if (constDeb2 != 0) {
+    NbImpulsionsDebitmetre2 = constDeb2;
+  }
+  if (constMan != 0) {
+    correctionManometre = constMan;
+  }
 }
 
 void loop() {
@@ -109,7 +139,7 @@ if(currentMillis - startMillis >= period) // Calcule et envoie toutes les 1 seco
     debit2 = 60000.0 / (currentMillis - startMillis) * pulses2 / NbImpulsionsDebitmetre2/2;
 
     unsigned long tempsPasse = currentMillis - startMillis;
-    Serial.print("Temps passe : ");
+/*    Serial.print("Temps passe : ");
     Serial.println(tempsPasse);
     Serial.print("pulses 1 : ");
     Serial.println(pulses1);
@@ -137,12 +167,12 @@ if(currentMillis - startMillis >= period) // Calcule et envoie toutes les 1 seco
         Serial.println();*/
         
         // Affichage des résultats
-        Serial.print("Mediane: ");
-        Serial.println(mediane);
+//        Serial.print("Mediane: ");
+//        Serial.println(mediane);
         //Serial.print("Moyenne sans outliers: ");
         //Serial.println(moyenneFiltree);
         
-        pressure = ((mediane-calib)*2.400/4096.000)*4+1;
+        pressure = ((mediane-calib)*2.400/4096.000)*4+correctionManometre;
         
   //      Serial.print("Val :");
   //      Serial.println(val);
@@ -180,10 +210,66 @@ if(currentMillis - startMillis >= period) // Calcule et envoie toutes les 1 seco
     }else{
       Serial.println("Finding satellites");
     }
-    bluetoothMsg = String(pressure) + ";" + String(sat) + ";" + String(lon) + ";" + String(llat) + ";" + String(sspeed) + ";" + String(debit1) + ";" + String(debit2);
+    bluetoothMsg = "A;" + String(pressure) + ";" + String(sat) + ";" + String(lon) + ";" + String(llat) + ";" + String(sspeed) + ";" + String(debit1) + ";" + String(debit2);
     SerialBT.println(bluetoothMsg);
     Serial.println(bluetoothMsg);
     startMillis = currentMillis;;
+  }
+
+  recvWithEndMarker();
+  if (newData) {
+    Serial.println(messageRecu);
+    parseData();
+    newData = false;
+  }  
+  // Read received messages
+  if (messageRecu == "cns") {
+    Serial.println("OK");
+    //Récupération des constantes et envoie en bluetooth
+    preferences.begin("constantes", false);
+    constDeb1 = preferences.getUInt("constDeb1", 0);
+    constDeb2 = preferences.getUInt("constDeb2", 0);
+    constMan = preferences.getUInt("constMan", 0);
+    preferences.end();
+    if (constDeb1 != 0) {
+      NbImpulsionsDebitmetre1 = constDeb1;
+    }
+    if (constDeb2 != 0) {
+      NbImpulsionsDebitmetre2 = constDeb2;
+    }
+    if (constMan != 0) {
+      correctionManometre = constMan;
+    }
+    bluetoothMsg = "B;" + String(NbImpulsionsDebitmetre1) + ";" + String(NbImpulsionsDebitmetre2) + ";" + String(correctionManometre);
+    SerialBT.println(bluetoothMsg);
+    Serial.println(bluetoothMsg);
+//    Serial.println(messageRecu);
+    messageRecu = "";
+//    Serial.println(messageRecu);
+  }
+  if (messageRecu == "gauche") {
+    Serial.println(valeurRecue);
+    //Ecriture de la constante gauche
+    preferences.begin("constantes", false);
+    preferences.putUInt("constDeb1", valeurRecue);
+    preferences.end();
+    messageRecu = "cns";
+  }
+  if (messageRecu == "droit") {
+    Serial.println(valeurRecue);
+    //Ecriture de la constante gauche
+    preferences.begin("constantes", false);
+    preferences.putUInt("constDeb2", valeurRecue);
+    preferences.end();
+    messageRecu = "cns";
+  }
+  if (messageRecu == "mano") {
+    Serial.println(valeurRecue);
+    //Ecriture de la constante gauche
+    preferences.begin("constantes", false);
+    preferences.putUInt("constMan", valeurRecue);
+    preferences.end();
+    messageRecu = "cns";
   }
 }
 
@@ -207,4 +293,51 @@ float calculerMoyenneSansOutliers() {
     }
   }
   return somme / (float)nombreDeValeurs;
+}
+
+// Function to receive data with an end marker
+void recvWithEndMarker() {
+  static byte ndx = 0;
+  char endMarker = '\n';
+  char rc;
+  
+  while (SerialBT.available() > 0 && newData == false) {
+    rc = SerialBT.read();
+    
+/*    if (rc != endMarker){
+      messageRecu += String(rc);
+    }
+    else{
+      messageRecu = "";
+    }
+*/    if (rc != endMarker) {
+      receivedChars[ndx] = rc;
+      ndx++;
+      if (ndx >= sizeof(receivedChars) - 1) {
+        ndx = sizeof(receivedChars) - 1;        
+      }
+    } else {
+      receivedChars[ndx] = '\0'; // terminate the string
+      ndx = 0;
+      newData = true;
+    }
+  }
+}
+
+// Function to parse the received data
+void parseData() {
+  char * strtokIndx; // this is used by strtok() as an index
+  
+  strtokIndx = strtok(receivedChars, ":"); // get the first part - the message
+  strcpy(message, strtokIndx); // copy it to message variable
+  
+  strtokIndx = strtok(NULL, ":"); // get the second part - the value
+  strcpy(value, strtokIndx); // copy it to value variable
+  messageRecu = message;
+  valeurRecue = atoi(value);
+  // Now you can use the 'message' and 'value' variables
+  Serial.print("Message: ");
+  Serial.println(messageRecu);
+  Serial.print("Value: ");
+  Serial.println(valeurRecue);
 }
