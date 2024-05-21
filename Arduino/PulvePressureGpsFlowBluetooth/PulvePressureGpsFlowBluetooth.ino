@@ -30,7 +30,7 @@ unsigned int valeurRecue;
 //#define USE_PIN // Uncomment this to use PIN during pairing. The pin is specified on the line below
 const char *pin = "1234"; // Change this to more secure PIN.
 
-String device_name = "PulvePressure";
+String device_name = "Dhugues";
 
 int calib = 415;
 
@@ -172,12 +172,14 @@ if(currentMillis - startMillis >= period) // Calcule et envoie toutes les 1 seco
         //Serial.print("Moyenne sans outliers: ");
         //Serial.println(moyenneFiltree);
         
-        pressure = ((mediane-calib)*2.400/4096.000)*4+correctionManometre;
+        pressure = ((mediane-calib)*2.400/4096.000)*4+(correctionManometre/100.000);
         
-  //      Serial.print("Val :");
-  //      Serial.println(val);
-  //      Serial.print("pressure :");
-  //      Serial.println(pressure,3);
+        Serial.print("Val :");
+        Serial.println(val);
+        Serial.print("pressure :");
+        Serial.println(pressure,3);
+        Serial.print("correctionManometre :");
+        Serial.println(correctionManometre);
     
         ind++; // Incrémentez l'indice
       }
@@ -212,6 +214,7 @@ if(currentMillis - startMillis >= period) // Calcule et envoie toutes les 1 seco
     }
     bluetoothMsg = "A;" + String(pressure) + ";" + String(sat) + ";" + String(lon) + ";" + String(llat) + ";" + String(sspeed) + ";" + String(debit1) + ";" + String(debit2);
     SerialBT.println(bluetoothMsg);
+    Serial.print("bluetoothMsg :");
     Serial.println(bluetoothMsg);
     startMillis = currentMillis;;
   }
@@ -237,7 +240,7 @@ if(currentMillis - startMillis >= period) // Calcule et envoie toutes les 1 seco
     if (constDeb2 != 0) {
       NbImpulsionsDebitmetre2 = constDeb2;
     }
-    if (constMan != 0) {
+    if (constMan) {
       correctionManometre = constMan;
     }
     bluetoothMsg = "B;" + String(NbImpulsionsDebitmetre1) + ";" + String(NbImpulsionsDebitmetre2) + ";" + String(correctionManometre);
