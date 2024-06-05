@@ -180,7 +180,7 @@ if(currentMillis - startMillis >= period) // Calcule et envoie toutes les 1 seco
         //Serial.print("Moyenne sans outliers: ");
         //Serial.println(moyenneFiltree);
         
-        pressure = (((((mediane-calib)*2.400/4096.000)*4)-(correctionManometreB/100.000)) / (correctionManometreA/100.000);
+        pressure = (  ((((mediane-calib)*2.400/4096.000)*4)-(correctionManometreB/100.000)) / (correctionManometreA/100.000));
         
         Serial.print("Val :");
         Serial.println(val);
