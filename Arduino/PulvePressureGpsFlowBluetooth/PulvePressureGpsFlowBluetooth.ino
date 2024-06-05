@@ -35,8 +35,8 @@ String device_name = "Dhugues";
 int calib = 415;
 
 // Flowmeter
-const byte debitmetre1 = 32; // broche utilisée pour déclencher l'interruption du debitmètre 1
-const byte debitmetre2 = 33; // broche utilisée pour déclencher l'interruption du debitmètre 1
+const byte debitmetre1 = 33; // broche utilisée pour déclencher l'interruption du debitmètre 1
+const byte debitmetre2 = 32; // broche utilisée pour déclencher l'interruption du debitmètre 1
 volatile long nbPulse1 = 0;  // compteur d'impulsions débitmètre 1
 volatile long nbPulse2 = 0;  // compteur d'impulsions débitmètre 2
 byte pulses1;
@@ -99,8 +99,8 @@ void setup() {
   pinMode(debitmetre1, INPUT_PULLUP);
   pinMode(debitmetre2, INPUT_PULLUP);
   // Mettre la broche du débimetre en interrupt, assignation de la fonction comptage et réglage en FALLING (NPN)
-  attachInterrupt(digitalPinToInterrupt(debitmetre1), comptage1, FALLING);  // a chaque interruption lance comptage1
-  attachInterrupt(digitalPinToInterrupt(debitmetre2), comptage2, FALLING);  // a chaque interruption lance comptage2
+  attachInterrupt(digitalPinToInterrupt(debitmetre1), comptage1, CHANGE);  // a chaque interruption lance comptage1
+  attachInterrupt(digitalPinToInterrupt(debitmetre2), comptage2, CHANGE);  // a chaque interruption lance comptage2
 
   //Récupération des constantes et stockage
   preferences.begin("constantes", false);
