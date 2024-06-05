@@ -48,10 +48,13 @@ float debit2;
 unsigned long timer;
 int NbImpulsionsDebitmetre1 = 1000;  //Pulses debitmetre gauche
 int NbImpulsionsDebitmetre2 = 1000;  //Pulses debitmetre droit
-int correctionManometre = 0;  //Correction manometre
+int correctionManometreA = 0;  //Correction manometreA (coeff)
+int correctionManometreB = 0;  //Correction manometre (constante)
+
 unsigned int constDeb1;
 unsigned int constDeb2;
-unsigned int constMan;
+unsigned int constManA;
+unsigned int constManB;
 
 const int n = 20; // Nombre de valeurs à prendre en compte
 int mesures[n];   // Tableau pour stocker les mesures
@@ -106,7 +109,9 @@ void setup() {
   preferences.begin("constantes", false);
   constDeb1 = preferences.getUInt("constDeb1", 0);
   constDeb2 = preferences.getUInt("constDeb2", 0);
-  constMan = preferences.getUInt("constMan", 0);
+  constManA = preferences.getUInt("constManA", 0);
+  constManB = preferences.getUInt("constManB", 0);
+
   preferences.end();
   if (constDeb1 != 0) {
     NbImpulsionsDebitmetre1 = constDeb1;
@@ -114,8 +119,11 @@ void setup() {
   if (constDeb2 != 0) {
     NbImpulsionsDebitmetre2 = constDeb2;
   }
-  if (constMan != 0) {
-    correctionManometre = constMan;
+  if (constManA != 0) {
+    correctionManometreA = constManA;
+  }
+  if (constManB != 0) {
+    correctionManometreB = constManB;
   }
 }
 
@@ -172,14 +180,16 @@ if(currentMillis - startMillis >= period) // Calcule et envoie toutes les 1 seco
         //Serial.print("Moyenne sans outliers: ");
         //Serial.println(moyenneFiltree);
         
-        pressure = ((mediane-calib)*2.400/4096.000)*4+(correctionManometre/100.000);
+        pressure = (((((mediane-calib)*2.400/4096.000)*4)-(correctionManometreB/100.000)) / (correctionManometreA/100.000);
         
         Serial.print("Val :");
         Serial.println(val);
         Serial.print("pressure :");
         Serial.println(pressure,3);
-        Serial.print("correctionManometre :");
-        Serial.println(correctionManometre);
+        Serial.print("correctionManometreA :");
+        Serial.println(correctionManometreA);
+        Serial.print("correctionManometreB :");
+        Serial.println(correctionManometreB);
     
         ind++; // Incrémentez l'indice
       }
@@ -232,7 +242,9 @@ if(currentMillis - startMillis >= period) // Calcule et envoie toutes les 1 seco
     preferences.begin("constantes", false);
     constDeb1 = preferences.getUInt("constDeb1", 0);
     constDeb2 = preferences.getUInt("constDeb2", 0);
-    constMan = preferences.getUInt("constMan", 0);
+    constManA = preferences.getUInt("constManA", 0);
+    constManB = preferences.getUInt("constManB", 0);
+
     preferences.end();
     if (constDeb1 != 0) {
       NbImpulsionsDebitmetre1 = constDeb1;
@@ -240,10 +252,13 @@ if(currentMillis - startMillis >= period) // Calcule et envoie toutes les 1 seco
     if (constDeb2 != 0) {
       NbImpulsionsDebitmetre2 = constDeb2;
     }
-    if (constMan) {
-      correctionManometre = constMan;
+    if (constManA) {
+      correctionManometreA = constManA;
     }
-    bluetoothMsg = "B;" + String(NbImpulsionsDebitmetre1) + ";" + String(NbImpulsionsDebitmetre2) + ";" + String(correctionManometre);
+    if (constManB) {
+      correctionManometreB = constManB;
+    }
+    bluetoothMsg = "B;" + String(NbImpulsionsDebitmetre1) + ";" + String(NbImpulsionsDebitmetre2) + ";" + String(correctionManometreA) + ";" + String(correctionManometreB);
     SerialBT.println(bluetoothMsg);
     Serial.println(bluetoothMsg);
 //    Serial.println(messageRecu);
@@ -266,11 +281,19 @@ if(currentMillis - startMillis >= period) // Calcule et envoie toutes les 1 seco
     preferences.end();
     messageRecu = "cns";
   }
-  if (messageRecu == "mano") {
+  if (messageRecu == "manoA") {
     Serial.println(valeurRecue);
     //Ecriture de la constante gauche
     preferences.begin("constantes", false);
-    preferences.putUInt("constMan", valeurRecue);
+    preferences.putUInt("constManA", valeurRecue);
+    preferences.end();
+    messageRecu = "cns";
+  }
+  if (messageRecu == "manoB") {
+    Serial.println(valeurRecue);
+    //Ecriture de la constante gauche
+    preferences.begin("constantes", false);
+    preferences.putUInt("constManB", valeurRecue);
     preferences.end();
     messageRecu = "cns";
   }
