@@ -48,8 +48,8 @@ float debit2;
 unsigned long timer;
 int NbImpulsionsDebitmetre1 = 1000;  //Pulses debitmetre gauche
 int NbImpulsionsDebitmetre2 = 1000;  //Pulses debitmetre droit
-int correctionManometreA = 0;  //Correction manometreA (coeff)
-int correctionManometreB = 0;  //Correction manometre (constante)
+int correctionManometreA = 70;  //Correction manometreA (coeff)
+int correctionManometreB = 70;  //Correction manometre (constante)
 
 unsigned int constDeb1;
 unsigned int constDeb2;
@@ -180,7 +180,7 @@ if(currentMillis - startMillis >= period) // Calcule et envoie toutes les 1 seco
         //Serial.print("Moyenne sans outliers: ");
         //Serial.println(moyenneFiltree);
         
-        pressure = (((((mediane-calib)*2.400/4096.000)*4)-(correctionManometreB/100.000)) / (correctionManometreA/100.000);
+        pressure = (((((mediane-calib)*2.400/4096.000)*4)-(correctionManometreB/100.000)) / (correctionManometreA/100.000));
         
         Serial.print("Val :");
         Serial.println(val);
