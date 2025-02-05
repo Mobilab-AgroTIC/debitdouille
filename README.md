@@ -7,3 +7,5 @@ Débitdouille est constitué :
 - 2 débitmètres.
 
 Une application android permet de visualiser tous ces paramètres dans la cabine (via Bluetooth)
+
+Le tutoriel d'installation est disponible sur ce lien 
