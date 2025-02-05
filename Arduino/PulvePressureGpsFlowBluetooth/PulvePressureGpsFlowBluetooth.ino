@@ -6,7 +6,7 @@
 #include <Preferences.h>
 
 // -----------------------------
-String device_name = "Débitdouille";
+String device_name = "débitdouille";
 // -----------------------------
 
 HardwareSerial neogps(1);
