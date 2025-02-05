@@ -5,6 +5,10 @@
 #include <TinyGPS++.h>
 #include <Preferences.h>
 
+// -----------------------------
+String device_name = "Dhugues";
+// -----------------------------
+
 HardwareSerial neogps(1);
 Preferences preferences;
 
@@ -30,7 +34,6 @@ unsigned int valeurRecue;
 //#define USE_PIN // Uncomment this to use PIN during pairing. The pin is specified on the line below
 const char *pin = "1234"; // Change this to more secure PIN.
 
-String device_name = "Dhugues";
 
 int calib = 415;
 
