@@ -1,7 +1,9 @@
 
-# Controleur pulvé cultures pérennes
+# Débitdouille, un outil low-cost en autoconstruction pour optimiser les pulvérisations
 
-Le controleur pulvé comprends sur le pulvé un GPS, un capteur de pression et 2 débitmètres.
+Débitdouille est constitué : 
+- Un GPS pour connaitre la vitesse actuelle
+- Un capteur de pression
+- 2 débitmètres.
 
-Une appli Android se connecte en bluetooth sur le controleur de pulvérisation pour afficher en temps réel tous les paramètres.
-
+Une application android permet de visualiser tous ces paramètres dans la cabine (via Bluetooth)
