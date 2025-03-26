@@ -1,11 +1,11 @@
+# Débitdouille, un système à construire soi-même permettant de suivre les paramètres de pulvérisation en temps réel.
 
-# Débitdouille, un outil low-cost en autoconstruction pour optimiser les pulvérisations
+Ces paramètres sont :
+- La pression du circuit,
+- les débits des sections,
+- la vitesse d'avancement.
 
-Débitdouille est constitué : 
-- Un GPS pour connaitre la vitesse actuelle
-- Un capteur de pression
-- 2 débitmètres.
+Tous ces paramètres sont affichés dans la cabine sur le smartphone (Android) du tractoriste via Bluetooth.
+Débitdouille a été développé par la CA34 et le mobilab AgroTIC dans le cadre du projet Occitanum
 
-Une application android permet de visualiser tous ces paramètres dans la cabine (via Bluetooth)
-
-Le tutoriel d'installation est disponible sur ce lien 
+Le [tutoriel d'installation est disponible sur ce lien ]([https://mobilab.agrotic.org/2024/11/28/debitdouille/])
