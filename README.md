@@ -1,4 +1,6 @@
-# Débitdouille, un système à construire soi-même permettant de suivre les paramètres de pulvérisation en temps réel.
+# Débitdouille
+
+Débitdouille est un système à construire soi-même permettant de suivre les paramètres de pulvérisation en temps réel.
 
 Ces paramètres sont :
 - La pression du circuit,
