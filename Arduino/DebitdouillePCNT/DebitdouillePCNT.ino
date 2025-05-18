@@ -21,6 +21,10 @@ TinyGPSPlus gps;
 const unsigned long period = 1000;
 const unsigned long periodPressure = 20;
 const int n = 20; // Nombre de valeurs pour le filtre médian
+unsigned int constDeb1;
+unsigned int constDeb2;
+unsigned int constManA;
+unsigned int constManB;
 
 // Variables PCNT
 pcnt_unit_t pcntUnit1 = PCNT_UNIT_0;
@@ -29,7 +33,7 @@ int16_t count1 = 0;
 int16_t count2 = 0;
 
 // Variables globales
-String bluetoothMsg = "";
+String bluetoothMsg = "";  //Message sent through Bluetooth
 String messageRecu;
 unsigned int valeurRecue;
 int calib = 415;
@@ -40,10 +44,23 @@ int correctionManometreB = 70;
 int mesures[n];
 int ind = 0;
 float debit1, debit2, pressure, sat, lon, llat, sspeed;
+bool newData = false;
+unsigned long startMillis;
+unsigned long currentMillis;
+unsigned long startMillisPressure;
+unsigned long currentMillisPressure;
+
+// variables for sensor
+int val, prescbar;
+
+char receivedChars[32];  // Variable to store the received data
+char message[16];        // Variable to store the part before the ':'
+char value[16];          // Variable to store the part after the ':'
 
 // Configuration Bluetooth
+//#define USE_PIN // Uncomment this to use PIN during pairing. The pin is specified on the line below
 const char *pin = "1234";
-String device_name = "Calvet";
+String device_name = "Debitdouille";
 BluetoothSerial SerialBT;
 
 void setupPCNT() {
@@ -132,7 +149,7 @@ void loop() {
             ind++;
         } else {
             int mediane = calculerMedian();
-            pressure = (((((mediane-calib)*2.400/4096.000)*4)-(correctionManometreB/100.000)) / (correctionManometreA/100.000);
+            pressure = (((((mediane-calib)*2.400/4096.000)*4)-(correctionManometreB/100.000)) / (correctionManometreA/100.000));
             ind = 0;
         }
         
