@@ -1,7 +1,15 @@
 /*
  Name:		Debitdouille.ino
  Created:	3/28/2025 7:32:26 AM
- Author:	nicol
+ Author:	DiNy
+
+
+ TODO : 
+ - récupérer un ID de carte pour l'envoyer à l'appli 
+ - ajout watchdog
+ - disable BOD
+
+
 */
 #include "config.h"
 
@@ -35,7 +43,7 @@ unsigned int valeurRecue;
 const char* pin = "1234"; // Change this to more secure PIN.
 
 ///////////////////////////////////
-
+int nombre_debitmetres = 2;//TODO : ajouter cela aup paramétrage série 
 int correctionManometreA = 70;  //Correction manometreA (coeff)
 int correctionManometreB = 70;  //Correction manometre (constante)
 
@@ -81,6 +89,7 @@ void setup() {
     //  Pression
     mesure_pression_timer.attach(1.0, mesure_pression);
     //  Initialisation GPS
+    init_GPS_neo7M(neogps, set_gps_only, sizeof(set_gps_only));
     timer_display_gps.attach(2.0, gps_display); // Affichage toutes les 2 secondes
     //  Envoi bluetooth
 
@@ -110,35 +119,29 @@ void setup() {
 }
 
 void loop() {
-    // Gestion GPS
-    while (neogps.available()) {
-        gps.encode(neogps.read());
-    }
-
-
-
     //  Lecture debitmètre 
     if(FLAG_DEBITMETRE) {
         //Print optionnel
         #if debug_debitmetre==true
         slogln("Debits:");
         #endif
-        for (int i = 0; i < 4; i++) {
+        for (int i = 0; i < nombre_debitmetres; i++) {
             Debitmetre_t* d = &debitmetre[i];
         #if debug_debitmetre==true
-            slogf("\t%s (GPIO %d) : %.2f L/min\n", debit_name[i], d->gpio_pin, d->flow);
+            slogf("  %s(%d)= %.2f L/min   ", debit_name[i], d->gpio_pin, d->flow);
         #endif
-            //traitement valeur 
-
         }
+        slog("\n");
         //reset flag 
         FLAG_DEBITMETRE = false;  // Réinitialiser l'indicateur
     }
 
-
-
     //SEMI ASYNC
-    //  Lecture GPS 
+    //     GPS 
+    while (neogps.available()) {
+        gps.encode(neogps.read());
+    }
+
     if (FLAG_GPS) {
         updateGPS(neogps);
         // Utilise sat, lon, llat, sspeed comme tu veux
@@ -157,6 +160,7 @@ void loop() {
         FLAG_GPS = false;  // Réinitialiser l'indicateur
     }
 
+    //    PRESSION 
     if (FLAG_PRESSION) {
         //Lecture sync
         lecture_calc_pression(correctionManometreA, correctionManometreB);
@@ -166,21 +170,12 @@ void loop() {
         FLAG_PRESSION = false;
     }
 
-    
-
-
-
+    //TODO : remove le timer maison millis()
     currentMillis = millis();
     if (currentMillis - startMillis >= period) // Calcule et envoie toutes les 1 secondes environ
     {
         unsigned long tempsPasse = currentMillis - startMillis;
-
-      //  // PRESSION
-
-
-
-
-
+        //TODO : passer cela en time Attach 
         bluetoothMsg = "A;" + String(pressure) + ";" + String(sat) + ";" + String(lon) + ";" + String(llat) + ";" + String(sspeed) + ";" + String(debitmetres_valeurs[0]) + ";" + String(debitmetres_valeurs[1]);
         SerialBT.println(bluetoothMsg);
         Serial.print("bluetoothMsg :");

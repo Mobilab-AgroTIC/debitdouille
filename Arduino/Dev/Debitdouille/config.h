@@ -5,13 +5,12 @@
 ////////////////////////////////////
 
 #define VERSION "1.1"
-
 #define BAUDRATE_DEBUG		115200UL//Baudrate Serial
 #define BAUDRATE_GPS		9600UL//Baudrate Serial
 #define debug_serial		true
 #define debug_debitmetre	true
 #define debug_pressure		true
-#define debug_calc_pressure	false
+#define debug_calc_pressure	true
 #define debug_gps			true
 
 

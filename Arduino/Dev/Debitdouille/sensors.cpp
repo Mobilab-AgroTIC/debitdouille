@@ -151,6 +151,7 @@ int mesures[n];
 int calib = 415;
 
 void mesure_pression() {
+
     FLAG_PRESSION = true;
 }
 
@@ -158,44 +159,72 @@ void mesure_pression() {
 void lecture_calc_pression(int correctionManometreA, int correctionManometreB) {
     pressure = 0.0;
     int ind = 0;    // Indice actuel dans le tableau
-
-
-    while (ind < n) {
-        mesures[ind] = analogRead(PIN_PRESSURE); // Lecture de la valeur du capteur
-
-        // Calcul de la médiane et de la moyenne
-        int mediane = calculerMedian();
-        float moyenneFiltree = calculerMoyenneSansOutliers();
-        /*
-        Serial.println("Valeurs du tableau :");
-        for (int i = 0; i < n; i++) {
-            Serial.print(mesures[i]);
-            Serial.print(" ");
-        }
-        Serial.println();*/
-
-        // Affichage des résultats
-//        Serial.print("Mediane: ");
-//        Serial.println(mediane);
-        //Serial.print("Moyenne sans outliers: ");
-        //Serial.println(moyenneFiltree);
-
-        pressure = (((((mediane - calib) * 2.400 / 4096.000) * 4) - (correctionManometreB / 100.000)) / (correctionManometreA / 100.000));
-#if debug_calc_pressure==true
-        Serial.print("Val :");
-        Serial.println(mesures[ind]); 
-        Serial.print("pressure :");
-        Serial.println(pressure, 3);
-        Serial.print("correctionManometreA :");
-        Serial.println(correctionManometreA);
-        Serial.print("correctionManometreB :");
-        Serial.println(correctionManometreB);
-#endif
-        ind++; // Incrémentez l'indice
+    pinMode(PIN_PRESSURE, INPUT);
+    delay(1);
+    //Test de filtrage 150 kHz
+    const int N = 97;//valeur ? voir commentaire ci-dessous :
+    /*
+ * Filtrage logiciel du bruit périodique (ex: 150 kHz) sur ESP32
+ * On moyenne un nombre d'échantillons tel que la durée totale
+ * couvre un nombre entier de périodes du bruit, pour mieux l'atténuer.
+ * 
+ * - analogPin : broche analogique à lire (exemple GPIO34)
+ * - N : nombre de mesures à moyenner (ici 97 pour couvrir ~1 période de 65 µs / 6,67 µs)
+ * 
+ * Mesurez d'abord le temps réel d'un analogRead() sur votre carte pour ajuster N au mieux.
+ */
+    long somme = 0;
+    //unsigned long time_analog, time_mesure;
+    //time_mesure = millis();
+    for (int i = 0; i < N; i++) {
+        //time_analog = micros();
+        somme += analogRead(PIN_PRESSURE);//65µs @ F-CPU = 80MHz
+        //time_analog = micros() - time_analog;
     }
+    int moyenne = somme / N;
+    //time_mesure = millis()- time_mesure;
+    //Serial.println(time_analog);
+    //Serial.println(time_mesure);
+    //Serial.println(moyenne);
+    pressure = (((((moyenne - calib) * 2.400 / 4096.000) * 4) - (correctionManometreB / 100.000)) / (correctionManometreA / 100.000));
 
-    // Réinitialisation pour la prochaine série de mesures
-    ind = 0;
+    //Ancienne méthode 
+//    while (ind < n) {
+//        mesures[ind] = analogRead(PIN_PRESSURE); // Lecture de la valeur du capteur
+//
+//        // Calcul de la médiane et de la moyenne
+//        int mediane = calculerMedian();
+//        float moyenneFiltree = calculerMoyenneSansOutliers();
+//        /*
+//        Serial.println("Valeurs du tableau :");
+//        for (int i = 0; i < n; i++) {
+//            Serial.print(mesures[i]);
+//            Serial.print(" ");
+//        }
+//        Serial.println();*/
+//
+//        // Affichage des résultats
+////        Serial.print("Mediane: ");
+////        Serial.println(mediane);
+//        //Serial.print("Moyenne sans outliers: ");
+//        //Serial.println(moyenneFiltree);
+//
+//        pressure = (((((mediane - calib) * 2.400 / 4096.000) * 4) - (correctionManometreB / 100.000)) / (correctionManometreA / 100.000));
+//#if debug_calc_pressure==true
+//        Serial.print("Val :");
+//        Serial.println(mesures[ind]); 
+//        Serial.print("pressure :");
+//        Serial.println(pressure, 3);
+//        Serial.print("correctionManometreA :");
+//        Serial.println(correctionManometreA);
+//        Serial.print("correctionManometreB :");
+//        Serial.println(correctionManometreB);
+//#endif
+//        ind++; // Incrémentez l'indice
+//    }
+//
+//    // Réinitialisation pour la prochaine série de mesures
+//    ind = 0;
 
 }
 
