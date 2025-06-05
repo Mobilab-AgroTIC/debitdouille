@@ -17,3 +17,4 @@ Cette application Flutter affiche en temps réel les données envoyées en Bluet
    ```
 
 La page principale montre la pression, la vitesse et jusqu'à six débitmètres. Un bouton permet de simuler la réception d'une trame JSON.
+La page "Connexion" dispose d'un bouton de scan pour rechercher les modules Bluetooth à proximité.
