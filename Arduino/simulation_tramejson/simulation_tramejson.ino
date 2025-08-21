@@ -20,6 +20,19 @@ Coeff pression = {1.0, 0.0};
 Coeff dg[3] = {{1.0, 0.0}, {1.0, 0.0}, {1.0, 0.0}};
 Coeff dd[3] = {{1.0, 0.0}, {1.0, 0.0}, {1.0, 0.0}};
 
+#include "esp_bt_device.h"   // Pour accéder à l'adresse MAC BT
+
+void printBluetoothAddress() {
+  const uint8_t* point = esp_bt_dev_get_address();
+  Serial.print("Adresse MAC Bluetooth : ");
+  for (int i = 0; i < 6; i++) {
+    if (i != 0) Serial.print(":");
+    Serial.print(String(point[i], HEX));
+  }
+  Serial.println();
+}
+
+
 void setup() {
   Serial.begin(115200);
   
@@ -29,6 +42,9 @@ void setup() {
   SerialBT.begin("debitdouille");
   Serial.println("Bluetooth prêt !");
   randomSeed(analogRead(0));
+
+  printBluetoothAddress();
+
 }
 
 void loop() {

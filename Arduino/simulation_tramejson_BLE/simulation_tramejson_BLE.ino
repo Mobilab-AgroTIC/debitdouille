@@ -12,9 +12,8 @@
 #define EEPROM_TAG_VALUE 1
 #define EEPROM_COEFF_START 1
 
-// UUID personnalisés pour BLE
-#define SERVICE_UUID        "12345678-1234-1234-1234-1234567890ab"
-#define CHARACTERISTIC_UUID "abcdefab-1234-1234-1234-abcdefabcdef"
+#define SERVICE_UUID        "0000ffe1-0000-1000-8000-00805f9b34fb"
+#define CHARACTERISTIC_UUID "0000ffe1-0000-1000-8000-00805f9b34fb"
 
 struct Coeff {
   float A;
@@ -25,83 +24,120 @@ Coeff pression = {1.0, 0.0};
 Coeff dg[3] = {{1.0, 0.0}, {1.0, 0.0}, {1.0, 0.0}};
 Coeff dd[3] = {{1.0, 0.0}, {1.0, 0.0}, {1.0, 0.0}};
 
-
 BLECharacteristic *pCharacteristic;
 bool deviceConnected = false;
+String lastReceivedMessage = "";
 
 void saveCoefficientToEEPROM(String id, Coeff value);
+
+void updateCoeffFromJson(String id, float A, float B) {
+  if (id == "P") pression = {A, B};
+  else if (id.startsWith("DG")) {
+    int i = id.substring(2).toInt() - 1;
+    if (i >= 0 && i < 3) dg[i] = {A, B};
+  } else if (id.startsWith("DD")) {
+    int i = id.substring(2).toInt() - 1;
+    if (i >= 0 && i < 3) dd[i] = {A, B};
+  }
+  saveCoefficientToEEPROM(id, {A, B});
+  Serial.println("MAJ Coeff " + id + " A=" + String(A) + " B=" + String(B));
+}
 
 class MyServerCallbacks : public BLEServerCallbacks {
   void onConnect(BLEServer* pServer) override {
     deviceConnected = true;
     Serial.println("Client BLE connecté !");
   }
-
   void onDisconnect(BLEServer* pServer) override {
     deviceConnected = false;
     Serial.println("Client BLE déconnecté !");
-    delay(100);  // Petit délai pour laisser le système se stabiliser
-    pServer->getAdvertising()->start();  // Redémarre l'advertising
+    delay(100);
+    pServer->getAdvertising()->start();
     Serial.println("BLE advertising relancé !");
   }
 };
-
 
 class CoeffCallbacks : public BLECharacteristicCallbacks {
   void onWrite(BLECharacteristic *pChar) override {
     String value = String(pChar->getValue().c_str());
     Serial.println("Reçu BLE : " + value);
+    lastReceivedMessage = value;
 
-    if (value == "coeff") {
-      StaticJsonDocument<512> doc;
-      doc["coeff"] = 1;
+    StaticJsonDocument<512> doc;
+    DeserializationError err = deserializeJson(doc, value);
+    if (!err) {
+      if (doc["get_coeff"] == true) {
+        StaticJsonDocument<512> docOut;
+        JsonObject coeff = docOut.createNestedObject("coeff");
 
-      JsonObject cp = doc.createNestedObject("pression");
-      cp["A"] = pression.A;
-      cp["B"] = pression.B;
+        JsonObject cp = coeff.createNestedObject("P");
+        cp["A"] = pression.A;
+        cp["B"] = pression.B;
 
-      for (int i = 0; i < 3; i++) {
-        JsonObject g = doc.createNestedObject("DG" + String(i + 1));
-        g["A"] = dg[i].A;
-        g["B"] = dg[i].B;
+        for (int i = 0; i < 3; i++) {
+          JsonObject g = coeff.createNestedObject("DG" + String(i + 1));
+          g["A"] = dg[i].A;
+          g["B"] = dg[i].B;
 
-        JsonObject d = doc.createNestedObject("DD" + String(i + 1));
-        d["A"] = dd[i].A;
-        d["B"] = dd[i].B;
+          JsonObject d = coeff.createNestedObject("DD" + String(i + 1));
+          d["A"] = dd[i].A;
+          d["B"] = dd[i].B;
+        }
+
+        String jsonStr;
+        serializeJson(docOut, jsonStr);
+        pChar->setValue(jsonStr.c_str());
+        pChar->notify();
+        Serial.println("Trame coeff envoyée : " + jsonStr);
+        return;
       }
 
-      String jsonStr;
-      serializeJson(doc, jsonStr);
-      pChar->setValue(jsonStr.c_str());
-      pChar->notify();
-      Serial.println("Trame coeff envoyée : " + jsonStr);
-      return;
-    }
+      if (doc["update"] == 1 && doc.containsKey("id")) {
+        String id = doc["id"];
+        float A = doc["A"];
+        float B = doc["B"];
+        updateCoeffFromJson(id, A, B);
+        return;
+      }
 
-    // Sinon, gestion d'une mise à jour de coefficient
-    StaticJsonDocument<256> doc;
-    DeserializationError err = deserializeJson(doc, value);
-    if (err) {
-      Serial.println("Erreur JSON reçu : " + String(err.c_str()));
-      return;
-    }
+      if (doc.containsKey("update_coeff")) {
+        JsonObject updates = doc["update_coeff"].as<JsonObject>();
+        for (JsonPair kv : updates) {
+          String id = kv.key().c_str();
+          float A = kv.value()["A"];
+          float B = kv.value()["B"];
+          updateCoeffFromJson(id, A, B);
+        }
+        return;
+      }
+    } else {
+      Serial.println("Pas un JSON. Reçu brute : " + value);
+      if (value == "coeff") {
+        StaticJsonDocument<512> docOut;
+        JsonObject coeff = docOut.createNestedObject("coeff");
 
-    if (doc["update"] != 1) return;
-    String id = doc["id"];
-    float A = doc["A"];
-    float B = doc["B"];
+        JsonObject cp = coeff.createNestedObject("P");
+        cp["A"] = pression.A;
+        cp["B"] = pression.B;
 
-    if (id == "P") {
-      pression = {A, B};
-    } else if (id.startsWith("DG")) {
-      int i = id.substring(2).toInt() - 1;
-      if (i >= 0 && i < 3) dg[i] = {A, B};
-    } else if (id.startsWith("DD")) {
-      int i = id.substring(2).toInt() - 1;
-      if (i >= 0 && i < 3) dd[i] = {A, B};
+        for (int i = 0; i < 3; i++) {
+          JsonObject g = coeff.createNestedObject("DG" + String(i + 1));
+          g["A"] = dg[i].A;
+          g["B"] = dg[i].B;
+
+          JsonObject d = coeff.createNestedObject("DD" + String(i + 1));
+          d["A"] = dd[i].A;
+          d["B"] = dd[i].B;
+        }
+
+        String jsonStr;
+        serializeJson(docOut, jsonStr);
+        pChar->setValue(jsonStr.c_str());
+        pChar->notify();
+        Serial.println("Trame coeff envoyée (fallback) : " + jsonStr);
+        delay(2000);
+      }
     }
-    saveCoefficientToEEPROM(id, {A, B});
-    Serial.println("MAJ Coeff " + id + " A=" + String(A) + " B=" + String(B));
   }
 };
 
@@ -135,9 +171,9 @@ void loop() {
 
     float p = applyCoeff(randomFloat(1.0, 4.0, 2), pression);
     float v = randomFloat(3.0, 9.0, 1);
-    doc["P"] = String(applyCoeff(randomFloat(1.0, 4.0, 2), pression), 2);
-    doc["V"] = String(randomFloat(3.0, 9.0, 1), 2);
-    
+    doc["P"] = String(p, 2);
+    doc["V"] = String(v, 2);
+
     for (int i = 0; i < 3; i++) {
       float g = applyCoeff(randomFloat(0.1, 3.0, 2), dg[i]);
       float d = applyCoeff(randomFloat(0.1, 3.0, 2), dd[i]);
@@ -145,12 +181,25 @@ void loop() {
       doc["DD" + String(i + 1)] = String(d, 2);
     }
 
-
     String jsonStr;
     serializeJson(doc, jsonStr);
     pCharacteristic->setValue(jsonStr.c_str());
     pCharacteristic->notify();
+
     Serial.println("Trame envoyée : " + jsonStr);
+    Serial.println(">> Coefficients actuels :");
+    Serial.printf("  Pression : A = %.2f, B = %.2f\n", pression.A, pression.B);
+    for (int i = 0; i < 3; i++) {
+      Serial.printf("  DG%d : A = %.2f, B = %.2f\n", i+1, dg[i].A, dg[i].B);
+      Serial.printf("  DD%d : A = %.2f, B = %.2f\n", i+1, dd[i].A, dd[i].B);
+    }
+
+    if (lastReceivedMessage.length() > 0) {
+      Serial.println(">> Dernier message BLE reçu : " + lastReceivedMessage);
+      lastReceivedMessage = "";
+    }
+
+    Serial.println("-----------------------------------------");
   }
 
   delay(1000);
@@ -199,8 +248,9 @@ void saveCoefficientToEEPROM(String id, Coeff value) {
   else if (id.startsWith("DD")) index = id.substring(2).toInt() + 3;
 
   if (index >= 0 && index < COEFF_COUNT) {
-    EEPROM.put(index * sizeof(Coeff), value);
+    int address = EEPROM_COEFF_START + index * sizeof(Coeff);
+    EEPROM.put(address, value);
     EEPROM.commit();
-    Serial.println("Sauvegardé EEPROM pour " + id);
+    Serial.println("Sauvegardé EEPROM pour " + id + " à l’adresse " + String(address));
   }
 }
