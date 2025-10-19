@@ -1,4 +1,4 @@
-26935177187248407
+26938698993451955
 433_modules
 MODULE_QFM-RX1-433_RXB6
 
@@ -60046,6 +60046,13 @@ DS3231_2
 6
 6
 DIY_Modules
+GY-NEO6MV2_25_36
+
+
+0
+4
+4
+DIY_Modules
 Mounting_PCIE_2.5x4
 
 
@@ -60066,6 +60073,13 @@ SD_cardholder
 0
 6
 6
+DIY_Modules
+Untitled
+
+
+0
+4
+4
 Diode_SMD
 D_0201_0603Metric
 Diode SMD 0201 (0603 Metric), square (rectangular) end terminal, IPC-7351 nominal, (Body size source: https://www.vishay.com/docs/20052/crcw0201e3.pdf), generated with kicad-footprint-generator
