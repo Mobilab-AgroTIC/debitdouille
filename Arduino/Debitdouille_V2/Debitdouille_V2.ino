@@ -2,7 +2,7 @@
 #define V1          1//Esp32 carte V1
 #define V2_C3       2//carte V2 XIAO ESP32-C3
 #define V2_S3       3//carte V2 XIAO ESP32-S3
-#define DEBITDOUILLE_VERSION V2_S3  // <-- Modifier ici pour changer de version
+#define DEBITDOUILLE_VERSION V2_C3  // <-- Modifier ici pour changer de version
 
 #include <BLEDevice.h>
 #include <BLEServer.h>
@@ -220,6 +220,7 @@ struct SensorData {
     bool sensor3_connected; // État connexion capteur 3
     bool sensor4_connected; // État connexion capteur 4
     float pressure;
+    int pressureRawMilliVolts;  // Tension brute ADC en mV (debug/calibration)
     float sat;
     float lon;
     float llat;
@@ -668,6 +669,7 @@ void taskReadPressure(void *pvParameters) {
         // Mise à jour de la structure partagée (avec mutex)
         if(xSemaphoreTake(xMutexData, portMAX_DELAY) == pdTRUE) {
             sensorData.pressure = pressure_calc;
+            sensorData.pressureRawMilliVolts = (int)avg_mv;  // Stockage tension brute pour debug/calibration
             xSemaphoreGive(xMutexData);
         }
     }
@@ -730,9 +732,11 @@ void taskSendBLE(void *pvParameters) {
             float local_pressure, local_sat, local_lon, local_llat, local_sspeed;
             float local_debit1, local_debit2, local_debit3, local_debit4;
             float local_debit1_420, local_debit2_420, local_debit3_420, local_debit4_420;
+            int local_pressure_raw_mv;
 
             if(xSemaphoreTake(xMutexData, portMAX_DELAY) == pdTRUE) {
                 local_pressure = sensorData.pressure;
+                local_pressure_raw_mv = sensorData.pressureRawMilliVolts;
                 local_sat = sensorData.sat;
                 local_lon = sensorData.lon;
                 local_llat = sensorData.llat;
@@ -765,6 +769,9 @@ void taskSendBLE(void *pvParameters) {
 
             // Pression (en bars)
             doc["P"] = serialized(String(local_pressure, 2));
+
+            // Tension brute ADC de la pression (mV) - pour debug/calibration
+            doc["P_raw_mV"] = local_pressure_raw_mv;
 
             // Vitesse GPS (km/h)
             doc["V"] = serialized(String(local_sspeed, 2));

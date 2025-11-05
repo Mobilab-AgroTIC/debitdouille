@@ -198,7 +198,7 @@ class BleService {
     await _write?.write(cmd, withoutResponse: false);
   }
 
-  Future<void> sendUpdatedCoefficients(Map<String, Map<String, dynamic>> coeff) async {
+  Future<void> sendUpdatedCoefficients(Map<String, dynamic> coeff) async {
     final payload = {"update_coeff": coeff};
     final bytes = utf8.encode(jsonEncode(payload));
     await _write?.write(bytes, withoutResponse: false);

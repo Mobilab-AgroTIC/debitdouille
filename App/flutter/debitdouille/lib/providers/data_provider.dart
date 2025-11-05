@@ -5,15 +5,19 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 
 import '../models/capteur_data.dart';
+import '../models/flow_meter_source.dart';
 import '../services/ble_service.dart';
 import '../services/simulation_service.dart';
+import '../services/flow_meter_config_service.dart';
 import '../utils/constants.dart';
 
 class DataProvider with ChangeNotifier {
   final BleService ble;
   final SimulationService sim;
+  final FlowMeterConfigService flowMeterConfigService;
 
   CapteurData data = CapteurData.zero();
+  FlowMeterConfig flowMeterConfig = const FlowMeterConfig();
   String? lastJson;                   // trame brute la plus récente
   DateTime? lastTick;                 // dernière réception
   bool get isAlive =>
@@ -36,10 +40,18 @@ class DataProvider with ChangeNotifier {
   bool _hasPacketLoss = false;
   bool get hasPacketLoss => _hasPacketLoss;
 
-  DataProvider({required this.ble, required this.sim});
+  DataProvider({
+    required this.ble,
+    required this.sim,
+    required this.flowMeterConfigService,
+  });
 
   /// 🚀 Initialisation au démarrage : tente de se reconnecter au dernier appareil
   Future<void> initialize() async {
+    // Charger la configuration des débitmètres
+    flowMeterConfig = await flowMeterConfigService.loadConfig();
+    print("✅ Configuration débitmètres chargée : ${flowMeterConfig.toJson()}");
+
     final savedDevice = await ble.getSavedDevice();
     if (savedDevice != null) {
       print("🔄 Tentative de reconnexion automatique au dernier appareil...");
@@ -55,6 +67,38 @@ class DataProvider with ChangeNotifier {
         notifyListeners();
       }
     }
+  }
+
+  /// Met à jour la configuration d'un débitmètre et sauvegarde
+  Future<void> updateFlowMeterSource(String key, FlowMeterSource source) async {
+    switch (key) {
+      case 'DG1':
+        flowMeterConfig = flowMeterConfig.copyWith(dg1: source);
+        break;
+      case 'DD1':
+        flowMeterConfig = flowMeterConfig.copyWith(dd1: source);
+        break;
+      case 'DG2':
+        flowMeterConfig = flowMeterConfig.copyWith(dg2: source);
+        break;
+      case 'DD2':
+        flowMeterConfig = flowMeterConfig.copyWith(dd2: source);
+        break;
+      case 'DG3':
+        flowMeterConfig = flowMeterConfig.copyWith(dg3: source);
+        break;
+      case 'DD3':
+        flowMeterConfig = flowMeterConfig.copyWith(dd3: source);
+        break;
+      case 'DG4':
+        flowMeterConfig = flowMeterConfig.copyWith(dg4: source);
+        break;
+      case 'DD4':
+        flowMeterConfig = flowMeterConfig.copyWith(dd4: source);
+        break;
+    }
+    await flowMeterConfigService.saveConfig(flowMeterConfig);
+    notifyListeners();
   }
 
   Future<List<BluetoothDevice>> scan() => ble.scanDevices();
@@ -115,7 +159,6 @@ class DataProvider with ChangeNotifier {
       _checkFrameLoss(data.ID);
 
       // Passe immédiatement au vert
-      print("🔔 DataProvider.notifyListeners() appelé depuis _onJson");
       notifyListeners();
 
       // Programme le retour au rouge après tickDuration
@@ -126,8 +169,6 @@ class DataProvider with ChangeNotifier {
       // Même en cas de JSON invalide, on considère que "quelque chose" est arrivé
       // pour ne pas rester bloqué au rouge si le lien est bien vivant.
       lastTick = DateTime.now();
-
-      print("🔔 DataProvider.notifyListeners() appelé depuis _onJson (erreur)");
       notifyListeners();
       _scheduleAliveRefresh();
     }
@@ -202,7 +243,7 @@ class DataProvider with ChangeNotifier {
 
   // Calibration – proxies
   Future<void> requestCoefficients() => ble.requestCoefficients();
-  Future<void> sendUpdatedCoefficients(Map<String, Map<String, dynamic>> coeff) =>
+  Future<void> sendUpdatedCoefficients(Map<String, dynamic> coeff) =>
       ble.sendUpdatedCoefficients(coeff);
 
   @override
