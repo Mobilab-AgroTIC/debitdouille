@@ -6,6 +6,7 @@ import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 
 import '../models/capteur_data.dart';
 import '../models/flow_meter_source.dart';
+import '../models/firmware_info.dart';
 import '../services/ble_service.dart';
 import '../services/simulation_service.dart';
 import '../services/flow_meter_config_service.dart';
@@ -18,6 +19,7 @@ class DataProvider with ChangeNotifier {
 
   CapteurData data = CapteurData.zero();
   FlowMeterConfig flowMeterConfig = const FlowMeterConfig();
+  FirmwareInfo firmwareInfo = FirmwareInfo.empty();
   String? lastJson;                   // trame brute la plus récente
   DateTime? lastTick;                 // dernière réception
   bool get isAlive =>
@@ -152,6 +154,23 @@ class DataProvider with ChangeNotifier {
     try {
       final Map<String, dynamic> j = jsonDecode(s);
       print("✅ JSON décodé avec succès : $j");
+
+      // 🔍 Détection du type de message
+      if (j.containsKey('fw_version')) {
+        // C'est une réponse GET_INFO
+        firmwareInfo = FirmwareInfo.fromJson(j);
+        print("✅ Infos firmware reçues : ${firmwareInfo.version}");
+        notifyListeners();
+        return;
+      }
+
+      if (j.containsKey('coeff')) {
+        // C'est une réponse GET_COEFF - ne pas la traiter ici
+        // (elle est gérée dans calibration_screen directement)
+        return;
+      }
+
+      // Sinon, c'est une trame data normale
       data = CapteurData.fromJson(j);
       lastTick = DateTime.now();
 
@@ -245,6 +264,9 @@ class DataProvider with ChangeNotifier {
   Future<void> requestCoefficients() => ble.requestCoefficients();
   Future<void> sendUpdatedCoefficients(Map<String, dynamic> coeff) =>
       ble.sendUpdatedCoefficients(coeff);
+
+  // Firmware info – proxy
+  Future<void> requestFirmwareInfo() => ble.requestFirmwareInfo();
 
   @override
   void dispose() {

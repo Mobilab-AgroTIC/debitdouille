@@ -203,4 +203,9 @@ class BleService {
     final bytes = utf8.encode(jsonEncode(payload));
     await _write?.write(bytes, withoutResponse: false);
   }
+
+  Future<void> requestFirmwareInfo() async {
+    final cmd = utf8.encode(jsonEncode({"get_info": true}));
+    await _write?.write(cmd, withoutResponse: false);
+  }
 }

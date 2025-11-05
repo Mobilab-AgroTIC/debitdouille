@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../providers/settings_provider.dart';
+import '../providers/data_provider.dart';
 import '../utils/constants.dart';
+import '../utils/app_version.dart';
 import '../widgets/value_block.dart';
 
 class SettingsScreen extends StatelessWidget {
@@ -11,6 +13,7 @@ class SettingsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final s = context.watch<SettingsProvider>();
+    final dataProvider = context.watch<DataProvider>();
 
     const titleStyle = TextStyle(color: Colors.white70, fontSize: 20, fontWeight: FontWeight.bold);
     const sectionLabelStyle = TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w500);
@@ -118,8 +121,96 @@ class SettingsScreen extends StatelessWidget {
             title: const Text("Afficher bouton Simulation", style: sectionLabelStyle),
             activeColor: Colors.white,
           ),
+
+          const SizedBox(height: 24),
+          const Divider(color: Colors.white24, height: 1),
+          const SizedBox(height: 24),
+
+          // ---- Informations Versions ----
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text("Informations Versions", style: sectionLabelStyle),
+              const SizedBox(height: 16),
+
+              // Affichage des informations firmware hardware
+              if (dataProvider.firmwareInfo.version != "Non disponible") ...[
+                _buildInfoRow(
+                  "Version hardware",
+                  "${dataProvider.firmwareInfo.version} [${dataProvider.firmwareInfo.buildDate} ${dataProvider.firmwareInfo.buildTime}]",
+                  smallLabelStyle,
+                ),
+                const SizedBox(height: 8),
+                _buildInfoRow("Modèle hardware", dataProvider.firmwareInfo.espModel, smallLabelStyle),
+                const SizedBox(height: 16),
+              ] else ...[
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 8.0),
+                  child: Text(
+                    "Hardware : Aucune information disponible",
+                    style: TextStyle(color: Colors.white38, fontSize: 14, fontStyle: FontStyle.italic),
+                  ),
+                ),
+                const SizedBox(height: 16),
+              ],
+
+              // Informations version Flutter
+              _buildInfoRow("Version Flutter", "${AppVersion.version} [${AppVersion.buildDate} ${AppVersion.buildTime}]", smallLabelStyle),
+              const SizedBox(height: 16),
+
+              // Bouton pour requêter les informations hardware
+              Center(
+                child: ElevatedButton.icon(
+                  onPressed: dataProvider.connectedDevice != null
+                    ? () => dataProvider.requestFirmwareInfo()
+                    : null,
+                  icon: const Icon(Icons.info_outline),
+                  label: const Text("Obtenir infos hardware"),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.white,
+                    foregroundColor: Colors.black,
+                    disabledBackgroundColor: Colors.white24,
+                    disabledForegroundColor: Colors.white38,
+                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                  ),
+                ),
+              ),
+
+              if (dataProvider.connectedDevice == null)
+                const Padding(
+                  padding: EdgeInsets.only(top: 8.0),
+                  child: Center(
+                    child: Text(
+                      "Connectez-vous d'abord au dispositif BLE",
+                      style: TextStyle(color: Colors.orange, fontSize: 12),
+                    ),
+                  ),
+                ),
+            ],
+          ),
         ],
       ),
+    );
+  }
+
+  Widget _buildInfoRow(String label, String value, TextStyle labelStyle) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          width: 160,
+          child: Text(
+            "$label :",
+            style: labelStyle,
+          ),
+        ),
+        Expanded(
+          child: Text(
+            value,
+            style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w500),
+          ),
+        ),
+      ],
     );
   }
 }

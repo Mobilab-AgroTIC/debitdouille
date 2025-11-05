@@ -19,6 +19,25 @@
 #include <Adafruit_ADS1X15.h>
 #include <ArduinoJson.h>
 
+// ============================================
+// 📌 INFORMATIONS FIRMWARE
+// ============================================
+#define FW_VERSION_MAJOR 2// version majeure, rétrocompatibilité souhaitée dans les avec l'app dans une même version majeure.
+#define FW_VERSION_MINOR 1//TODO faire évoluer cela lors d'implémentation de fonctionnalités, en lien avec l'app flutter.
+#define FW_BUILD_DATE __DATE__  // Date de compilation automatique
+#define FW_BUILD_TIME __TIME__  // Heure de compilation automatique
+
+// Modèle ESP selon la version hardware
+#if DEBITDOUILLE_VERSION == V1
+  #define FW_ESP_MODEL "ESP32-WROOM-32"
+#elif DEBITDOUILLE_VERSION == V2_C3
+  #define FW_ESP_MODEL "XIAO ESP32-C3"
+#elif DEBITDOUILLE_VERSION == V2_S3
+  #define FW_ESP_MODEL "XIAO ESP32-S3"
+#else
+  #define FW_ESP_MODEL "ESP32 Unknown"
+#endif
+
 HardwareSerial neogps(1);
 Preferences preferences;
 TinyGPSPlus gps;
@@ -278,6 +297,12 @@ class MyCallbacks: public BLECharacteristicCallbacks {
             messageRecu = "get_coeff";
             newData = true;
             Serial.println("Commande JSON reçue: get_coeff");
+          }
+          // Commande: get_info (infos firmware)
+          else if (doc.containsKey("get_info") && doc["get_info"] == true) {
+            messageRecu = "get_info";
+            newData = true;
+            Serial.println("Commande JSON reçue: get_info");
           }
           // Commande: update_coeff
           else if (doc.containsKey("update_coeff")) {
@@ -1044,6 +1069,33 @@ void taskHandleCommands(void *pvParameters) {
                 messageRecu = "";
             }
 
+            // ========== COMMANDE GET_INFO (FORMAT JSON) - INFOS FIRMWARE ==========
+            else if (messageRecu == "get_info") {
+                // Créer le JSON de réponse avec les infos firmware
+                StaticJsonDocument<256> responseDoc;
+
+                // Construction de la version au format "X.Y"
+                String version = String(FW_VERSION_MAJOR) + "." + String(FW_VERSION_MINOR);
+
+                responseDoc["fw_version"] = version;
+                responseDoc["build_date"] = FW_BUILD_DATE;
+                responseDoc["build_time"] = FW_BUILD_TIME;
+                responseDoc["esp_model"] = FW_ESP_MODEL;
+
+                // Sérialiser et envoyer
+                String jsonResponse;
+                serializeJson(responseDoc, jsonResponse);
+
+                if (deviceConnected) {
+                    pTxCharacteristic->setValue(jsonResponse.c_str());
+                    pTxCharacteristic->notify();
+                    Serial.println("Infos firmware envoyées:");
+                    Serial.println(jsonResponse);
+                }
+
+                messageRecu = "";
+            }
+
             // ========== COMMANDE UPDATE_COEFF (FORMAT JSON) ==========
             else if (messageRecu == "update_coeff") {
                 // Parser le JSON complet stocké dans valeurRecueStr
@@ -1256,7 +1308,10 @@ void taskDebugSerial(void *pvParameters) {
         if (lineCounter % 20 == 0) {
             Serial.println("\n╔════════════════════════════════════════════════════════════════════════════════╗");
             Serial.print("║ Device ID: "); Serial.print(deviceID);
-            Serial.print(" | BLE: "); Serial.print(device_name);
+            Serial.print(" | FW: v"); Serial.print(FW_VERSION_MAJOR); Serial.print("."); Serial.print(FW_VERSION_MINOR);
+            Serial.print(" ("); Serial.print(FW_BUILD_DATE); Serial.print(")");
+            Serial.println();
+            Serial.print("║ BLE: "); Serial.print(device_name);
             Serial.print(" | Connecté: "); Serial.println(deviceConnected ? "OUI" : "NON");
             Serial.print("║ GPS - Sat: "); Serial.print(local_sat, 0);
             Serial.print(" | Lat: "); Serial.print(local_llat / 1000000.0, 6);
