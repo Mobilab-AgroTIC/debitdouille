@@ -18,12 +18,8 @@ class CalibrationScreen extends StatefulWidget {
 
 class _CalibrationScreenState extends State<CalibrationScreen> with TickerProviderStateMixin {
   late TabController _tab;
-  // Pour la pression : A et B
   final Map<String, TextEditingController> _aCtrls = {};
   final Map<String, TextEditingController> _bCtrls = {};
-  // Pour les débitmètres : PPL et flow
-  final Map<String, TextEditingController> _pplCtrls = {};
-  final Map<String, TextEditingController> _flowCtrls = {};
   double valeurCalib = 0.0;
   double valeurBrute = 0.0;
 
@@ -32,15 +28,8 @@ class _CalibrationScreenState extends State<CalibrationScreen> with TickerProvid
     super.initState();
     _tab = TabController(length: sensorKeys.length, vsync: this);
     for (final k in sensorKeys) {
-      if (k == "P") {
-        // Pression : A et B
-        _aCtrls[k] = TextEditingController();
-        _bCtrls[k] = TextEditingController();
-      } else {
-        // Débitmètres : PPL et flow
-        _pplCtrls[k] = TextEditingController();
-        _flowCtrls[k] = TextEditingController();
-      }
+      _aCtrls[k] = TextEditingController();
+      _bCtrls[k] = TextEditingController();
     }
     WidgetsBinding.instance.addPostFrameCallback((_) => _getCoeffs());
   }
@@ -50,8 +39,6 @@ class _CalibrationScreenState extends State<CalibrationScreen> with TickerProvid
     _tab.dispose();
     for (final c in _aCtrls.values) { c.dispose(); }
     for (final c in _bCtrls.values) { c.dispose(); }
-    for (final c in _pplCtrls.values) { c.dispose(); }
-    for (final c in _flowCtrls.values) { c.dispose(); }
     super.dispose();
   }
 
@@ -97,19 +84,10 @@ Future<void> _getCoeffs() async {
     final Map coeff = j["coeff"];
     for (final k in sensorKeys) {
       if (coeff[k] is Map) {
-        if (k == "P") {
-          // Pression : A et B
-          final A = (coeff[k]["A"] as num?)?.toDouble() ?? 1.0;
-          final B = (coeff[k]["B"] as num?)?.toDouble() ?? 0.0;
-          _aCtrls[k]!.text = A.toStringAsFixed(3);
-          _bCtrls[k]!.text = B.toStringAsFixed(3);
-        } else {
-          // Débitmètres : PPL et flow
-          final ppl = (coeff[k]["PPL"] as num?)?.toDouble() ?? 1000.0;
-          final flow = (coeff[k]["flow"] as num?)?.toDouble() ?? 20.0;
-          _pplCtrls[k]!.text = ppl.toStringAsFixed(0);
-          _flowCtrls[k]!.text = flow.toStringAsFixed(1);
-        }
+        final A = (coeff[k]["A"] as num?)?.toDouble() ?? 1.0;
+        final B = (coeff[k]["B"] as num?)?.toDouble() ?? 0.0;
+        _aCtrls[k]!.text = A.toStringAsFixed(3);
+        _bCtrls[k]!.text = B.toStringAsFixed(3);
       }
     }
     if (mounted) setState(() {});
@@ -122,24 +100,11 @@ Future<void> _getCoeffs() async {
   Future<void> _sendCoeffs() async {
     final Map<String, Map<String, double>> payload = {};
     for (final k in sensorKeys) {
-      if (k == "P") {
-        // Pression : A et B
-        payload[k] = {
-          "A": double.tryParse(_aCtrls[k]!.text) ?? 1.0,
-          "B": double.tryParse(_bCtrls[k]!.text) ?? 0.0,
-        };
-      } else {
-        // Débitmètres : PPL et flow
-        final ppl = double.tryParse(_pplCtrls[k]!.text) ?? 1000.0;
-        final flow = double.tryParse(_flowCtrls[k]!.text) ?? 20.0;
-        debugPrint("🔍 $k: PPL='${_pplCtrls[k]!.text}' ($ppl), flow='${_flowCtrls[k]!.text}' ($flow)");
-        payload[k] = {
-          "PPL": ppl,
-          "flow": flow,
-        };
-      }
+      payload[k] = {
+        "A": double.tryParse(_aCtrls[k]!.text) ?? 1.0,
+        "B": double.tryParse(_bCtrls[k]!.text) ?? 0.0,
+      };
     }
-    debugPrint("📤 Payload envoyé: ${jsonEncode(payload)}");
     await context.read<DataProvider>().sendUpdatedCoefficients(payload);
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -167,11 +132,9 @@ Future<void> _getCoeffs() async {
     }
 
     final currentKey = sensorKeys[_tab.index];
-
-    // Calculer les valeurs uniquement pour la pression
-    if (currentKey == "P") {
-      _recalc(currentCalib(), currentKey);
-    }
+    _recalc(currentCalib(), currentKey);
+    final A = double.tryParse(_aCtrls[currentKey]!.text) ?? 1.0;
+    final B = double.tryParse(_bCtrls[currentKey]!.text) ?? 0.0;
 
     return DefaultTabController(
       length: sensorKeys.length,
@@ -204,29 +167,17 @@ Future<void> _getCoeffs() async {
                     child: const Text("Envoyer les coefficients"),
                   ),
                   const SizedBox(height: 20),
-                  // Affichage des infos uniquement pour la pression
-                  if (currentKey == "P") ...[
-                    Text("Valeur brute: ${valeurBrute.toStringAsFixed(3)}",
-                        style: const TextStyle(color: Colors.white70)),
-                    const SizedBox(height: 8),
-                    const Text("Valeur calibrée = ( Valeur brute * A ) + B",
-                        style: TextStyle(color: Colors.white60)),
-                    const SizedBox(height: 8),
-                    Text("A = ${_aCtrls[currentKey]!.text}", style: const TextStyle(color: Colors.white60)),
-                    Text("B = ${_bCtrls[currentKey]!.text}", style: const TextStyle(color: Colors.white60)),
-                    const SizedBox(height: 8),
-                    Text("Valeur calibrée: ${valeurCalib.toStringAsFixed(3)}",
-                        style: const TextStyle(color: Colors.white)),
-                  ] else ...[
-                    // Affichage pour les débitmètres
-                    Text("Valeur actuelle: ${currentCalib().toStringAsFixed(2)} L/min",
-                        style: const TextStyle(color: Colors.white)),
-                    const SizedBox(height: 8),
-                    const Text("PPL = Impulsions par litre",
-                        style: TextStyle(color: Colors.white60)),
-                    const Text("Max Flow = Débit maximum en L/min",
-                        style: TextStyle(color: Colors.white60)),
-                  ],
+                  Text("Valeur brute: ${valeurBrute.toStringAsFixed(3)}",
+                      style: const TextStyle(color: Colors.white70)),
+                  const SizedBox(height: 8),
+                  const Text("Valeur calibrée = ( Valeur brute * A ) + B",
+                      style: TextStyle(color: Colors.white60)),
+                  const SizedBox(height: 8),
+                  Text("A = ${A.toStringAsFixed(3)}", style: const TextStyle(color: Colors.white60)),
+                  Text("B = ${B.toStringAsFixed(3)}", style: const TextStyle(color: Colors.white60)),
+                  const SizedBox(height: 8),
+                  Text("Valeur calibrée: ${valeurCalib.toStringAsFixed(3)}",
+                      style: const TextStyle(color: Colors.white)),
                 ],
               ),
             ),
@@ -237,25 +188,13 @@ Future<void> _getCoeffs() async {
   }
 
   Widget _coeffEditors(String key) {
-    if (key == "P") {
-      // Pression : A et B
-      return Row(
-        children: [
-          _numField("A", _aCtrls[key]!),
-          const SizedBox(width: 12),
-          _numField("B", _bCtrls[key]!),
-        ],
-      );
-    } else {
-      // Débitmètres : PPL et Max Flow
-      return Row(
-        children: [
-          _numField("PPL (pulse/L)", _pplCtrls[key]!),
-          const SizedBox(width: 12),
-          _numField("Max Flow (L/min)", _flowCtrls[key]!),
-        ],
-      );
-    }
+    return Row(
+      children: [
+        _numField("A", _aCtrls[key]!),
+        const SizedBox(width: 12),
+        _numField("B", _bCtrls[key]!),
+      ],
+    );
   }
 
   Widget _numField(String label, TextEditingController c) {

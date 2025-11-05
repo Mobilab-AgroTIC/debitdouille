@@ -19,25 +19,64 @@ class DataProvider with ChangeNotifier {
   bool get isAlive =>
       lastTick != null && DateTime.now().difference(lastTick!) <= tickDuration;
 
-  BluetoothDevice? get connectedDevice => _connectedDevice;
-  BluetoothDevice? _connectedDevice;
+  BluetoothDevice? get connectedDevice => ble.connectedDevice;
+  String? get connectedDeviceName => ble.connectedName;
 
   StreamSubscription<String>? _bleSub;
+  StreamSubscription<bool>? _connectionStateSub;
+  bool _isReconnecting = false;
+  bool get isReconnecting => _isReconnecting;
 
   // 🔔 Timer pour forcer un rafraîchissement de l'UI à l'expiration du délai vert
   Timer? _aliveTimer;
 
+  // 📊 Suivi glissant des IDs pour détecter la perte de trames
+  final List<int> _lastFrameIds = [];
+  static const int _maxFrameHistory = 10;
+  bool _hasPacketLoss = false;
+  bool get hasPacketLoss => _hasPacketLoss;
+
   DataProvider({required this.ble, required this.sim});
+
+  /// 🚀 Initialisation au démarrage : tente de se reconnecter au dernier appareil
+  Future<void> initialize() async {
+    final savedDevice = await ble.getSavedDevice();
+    if (savedDevice != null) {
+      print("🔄 Tentative de reconnexion automatique au dernier appareil...");
+      _isReconnecting = true;
+      notifyListeners();
+
+      try {
+        await connect(savedDevice);
+        print("✅ Reconnexion automatique au démarrage réussie !");
+      } catch (e) {
+        print("❌ Reconnexion automatique au démarrage échouée : $e");
+        _isReconnecting = false;
+        notifyListeners();
+      }
+    }
+  }
 
   Future<List<BluetoothDevice>> scan() => ble.scanDevices();
 
   Future<void> connect(BluetoothDevice d) async {
     await ble.connectTo(d);
-    _connectedDevice = d;
+    _isReconnecting = false; // Connexion réussie, désactiver le flag
 
     await _bleSub?.cancel();
     _bleSub = ble.jsonStream.listen(_onJson, onError: (e, st) {
-      // En cas d’erreur de stream, on notifie pour que l’UI réagisse (potentielle perte)
+      // En cas d'erreur de stream, on notifie pour que l'UI réagisse (potentielle perte)
+      notifyListeners();
+    });
+
+    // Écouter l'état de reconnexion pour mettre à jour l'UI
+    await _connectionStateSub?.cancel();
+    _connectionStateSub = ble.connectionStateStream.listen((isConnected) {
+      _isReconnecting = ble.isReconnecting;
+      if (!isConnected && !_isReconnecting) {
+        // Déconnexion définitive
+        lastTick = null;
+      }
       notifyListeners();
     });
 
@@ -46,12 +85,16 @@ class DataProvider with ChangeNotifier {
 
   Future<void> disconnect() async {
     await ble.disconnect();
-    _connectedDevice = null;
 
     await _bleSub?.cancel();
     _bleSub = null;
 
-    // On force l’UI à recalculer isAlive => rouge immédiat
+    await _connectionStateSub?.cancel();
+    _connectionStateSub = null;
+
+    _isReconnecting = false;
+
+    // On force l'UI à recalculer isAlive => rouge immédiat
     _aliveTimer?.cancel();
     _aliveTimer = null;
     lastTick = null;
@@ -68,7 +111,11 @@ class DataProvider with ChangeNotifier {
       data = CapteurData.fromJson(j);
       lastTick = DateTime.now();
 
+      // 📊 Détection de perte de trames via suivi glissant des IDs
+      _checkFrameLoss(data.ID);
+
       // Passe immédiatement au vert
+      print("🔔 DataProvider.notifyListeners() appelé depuis _onJson");
       notifyListeners();
 
       // Programme le retour au rouge après tickDuration
@@ -80,10 +127,59 @@ class DataProvider with ChangeNotifier {
       // pour ne pas rester bloqué au rouge si le lien est bien vivant.
       lastTick = DateTime.now();
 
+      print("🔔 DataProvider.notifyListeners() appelé depuis _onJson (erreur)");
       notifyListeners();
       _scheduleAliveRefresh();
     }
   }
+
+  void _checkFrameLoss(int newId) {
+    //TODO implémenter   if (!isConnected) return;
+    // Ignorer les doublons d'ID (même trame reçue plusieurs fois)
+    if (_lastFrameIds.isNotEmpty && newId == _lastFrameIds.last) {
+      return; // on ne fait rien, trame répétée
+    }
+
+    _lastFrameIds.add(newId);
+    if (_lastFrameIds.length > _maxFrameHistory) {
+      _lastFrameIds.removeAt(0);
+    }
+
+    if (_lastFrameIds.length < 2) return;
+
+    final prev = _lastFrameIds[_lastFrameIds.length - 2];
+    final curr = _lastFrameIds.last;
+
+    // 🔹 Détection de perte
+    final expected = prev + 1;
+    if (curr != expected) {
+      if (!_hasPacketLoss) {
+        print("⚠️ Perte de trame : attendu $expected, reçu $curr");
+        _hasPacketLoss = true;
+      }
+      return;
+    }
+
+    // 🔹 Vérification retour à la normale
+    if (_hasPacketLoss) {
+      const recoveryWindow = 5;
+      if (_lastFrameIds.length >= recoveryWindow) {
+        final recent = _lastFrameIds.sublist(_lastFrameIds.length - recoveryWindow);
+        bool allConsecutive = true;
+        for (int i = 1; i < recent.length; i++) {
+          if (recent[i] != recent[i - 1] + 1) {
+            allConsecutive = false;
+            break;
+          }
+        }
+        if (allConsecutive) {
+          print("✅ Retour à la normale : $recoveryWindow trames consécutives");
+          _hasPacketLoss = false;
+        }
+      }
+    }
+  }
+
 
   void _scheduleAliveRefresh() {
     // Annule l'ancien timer et reprogramme un nouveau
@@ -106,13 +202,14 @@ class DataProvider with ChangeNotifier {
 
   // Calibration – proxies
   Future<void> requestCoefficients() => ble.requestCoefficients();
-  Future<void> sendUpdatedCoefficients(Map<String, Map<String, double>> coeff) =>
+  Future<void> sendUpdatedCoefficients(Map<String, Map<String, dynamic>> coeff) =>
       ble.sendUpdatedCoefficients(coeff);
 
   @override
   void dispose() {
     _aliveTimer?.cancel();
     _bleSub?.cancel();
+    _connectionStateSub?.cancel();
     super.dispose();
   }
 }

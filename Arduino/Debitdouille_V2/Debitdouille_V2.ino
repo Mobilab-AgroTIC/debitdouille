@@ -17,6 +17,7 @@
     #include "driver/pcnt.h"  // PCNT uniquement pour ESP32-S3
 #endif
 #include <Adafruit_ADS1X15.h>
+#include <ArduinoJson.h>
 
 HardwareSerial neogps(1);
 Preferences preferences;
@@ -54,11 +55,11 @@ int NbImpulsionsDebitmetre3 = 1000;  // Canal 3: 1000 pulse/L par défaut
 int NbImpulsionsDebitmetre4 = 1000;  // Canal 4: 1000 pulse/L par défaut
 
 // ============= DÉLAIS DES TÂCHES FREERTOS (ms) =============
-unsigned long delay_task1_ReadPulse =       1000;  // Période d'échantillonnage PCNT (plus longue = plus précis). Ex : 65Hz => seulement 65 pulses en 1 seconde = 3.9L/min sur vmz08 => précision de 0.06L/min, si éch de 200ms => précision de 0.3L/min. 
-unsigned long delay_task_ReadADS1115 =      1000;   
-unsigned long delay_task_ReadPressure =     1000;   // Période de mise à jour de la pression
-unsigned long delay_task_ReadGPS =          1000;   //
-unsigned long delay_task_SendBLE =          1000;   //
+unsigned long delay_task1_ReadPulse =       1000;  //1000 Période d'échantillonnage PCNT (plus longue = plus précis). Ex : 65Hz => seulement 65 pulses en 1 seconde = 3.9L/min sur vmz08 => précision de 0.06L/min, si éch de 200ms => précision de 0.3L/min. 
+unsigned long delay_task_ReadADS1115 =      200;   
+unsigned long delay_task_ReadPressure =     500;   // Période de mise à jour de la pression
+unsigned long delay_task_ReadGPS =          1000;   //1000
+unsigned long delay_task_SendBLE =          1000;   //1000
 unsigned long delay_task_HandleCommands =   50;   //
 unsigned long delay_task_DebugSerial =      1000;   //
 
@@ -175,8 +176,15 @@ int calib = 0;  // Calibration ADC en mV (0 = utilise uniquement la calibration 
 int correctionManometreA = 100;  // Correction pente (100 = 1.00, pas de correction)
 int correctionManometreB = 0;    // Correction offset en bars*100 (0 = pas de correction)
 int pressureSensorType = 0;  // Type de capteur de pression: 0=Gravity analogique (0.5-4.5V, 0-16 bar), 1=4-20mA (0-16 bar)
+
+// Nouveaux paramètres de calibration configurables (mode Tension 3 fils)
+float pressureMaxBar = 16.0;      // Pression maximale du capteur (bar) - configurable via BLE
+float pressureVoltageMin = 0.5;   // Tension minimale (V) - configurable via BLE
+float pressureVoltageMax = 4.5;   // Tension maximale (V) - configurable via BLE
+
 String deviceID = "";  // Identifiant unique du device (par défaut: 6 derniers caractères de l'adresse MAC)
 float debit1, debit2, pressure, sat, lon, llat, sspeed;
+unsigned long frameID = 0;  // ID incrémental de trame BLE pour détecter les pertes de paquets
 
 // ============== FreeRTOS Configuration ==============
 // Handles des tâches
@@ -252,19 +260,51 @@ class MyCallbacks: public BLECharacteristicCallbacks {
           receivedString += rxValue[i];
         }
 
-        // Parser les données reçues (format: "commande:valeur")
-        int separatorIndex = receivedString.indexOf(':');
-        if (separatorIndex > 0) {
-          messageRecu = receivedString.substring(0, separatorIndex);
-          String valeurStr = receivedString.substring(separatorIndex + 1);
-          valeurRecue = valeurStr.toInt();
-          valeurRecueStr = valeurStr;  // Garder aussi la version string
-          newData = true;
+        // Détection du format : JSON (commence par '{') ou ancien format "commande:valeur"
+        if (receivedString.startsWith("{")) {
+          // ========== FORMAT JSON ==========
+          StaticJsonDocument<1024> doc;
+          DeserializationError error = deserializeJson(doc, receivedString);
 
-          Serial.print("Message reçu: ");
-          Serial.print(messageRecu);
-          Serial.print(" Valeur: ");
-          Serial.println(valeurStr);
+          if (error) {
+            Serial.print("Erreur parsing JSON: ");
+            Serial.println(error.c_str());
+            return;
+          }
+
+          // Commande: get_coeff
+          if (doc.containsKey("get_coeff") && doc["get_coeff"] == true) {
+            messageRecu = "get_coeff";
+            newData = true;
+            Serial.println("Commande JSON reçue: get_coeff");
+          }
+          // Commande: update_coeff
+          else if (doc.containsKey("update_coeff")) {
+            messageRecu = "update_coeff";
+            // Stocker le sous-objet pour traitement ultérieur dans taskHandleCommands
+            valeurRecueStr = receivedString;  // Garder le JSON complet
+            newData = true;
+            Serial.println("Commande JSON reçue: update_coeff");
+          }
+          else {
+            Serial.println("Commande JSON inconnue");
+          }
+        }
+        else {
+          // ========== FORMAT ANCIEN "commande:valeur" ==========
+          int separatorIndex = receivedString.indexOf(':');
+          if (separatorIndex > 0) {
+            messageRecu = receivedString.substring(0, separatorIndex);
+            String valeurStr = receivedString.substring(separatorIndex + 1);
+            valeurRecue = valeurStr.toInt();
+            valeurRecueStr = valeurStr;  // Garder aussi la version string
+            newData = true;
+
+            Serial.print("Message reçu (ancien format): ");
+            Serial.print(messageRecu);
+            Serial.print(" Valeur: ");
+            Serial.println(valeurStr);
+          }
         }
       }
     }
@@ -432,7 +472,7 @@ void taskReadPulseCounters(void *pvParameters) {
         vTaskDelayUntil(&xLastWakeTime, xFrequency);
 
         unsigned long currentTime = millis();
-        unsigned long deltaTime = currentTime - lastTime;
+        unsigned long deltaTime = currentTime - lastTime;//non utilisé si PCNT 
 
         uint32_t count1_local = 0;
         uint32_t count2_local = 0;
@@ -590,22 +630,31 @@ void taskReadPressure(void *pvParameters) {
         // Calcul de la moyenne (pas médiane)
         float avg_mv = sum_mv / (float)NB_MES;
         float voltage_v = avg_mv / 1000.0;  // mV → V
+
         // ========== TYPE 0: Capteur Gravity analogique (0.5-4.5V, 0-16 bar) ==========
         // ========== TYPE 1: Capteur 4-20mA (0-16 bar) en direct sur ESP32 ==========
         if (pressureSensorType == 0) {
-            // Conversion Gravity: 0.5V-4.5V → 0-1.6 MPa (16 bar)
-            float pressure_mpa = (voltage_v - 0.5) / 4.0 * 1.6;
-            pressure_bar = pressure_mpa * 10.0;  // MPa → bar
+            // Conversion Tension 3 fils: utilise les paramètres configurables
+            // Permet calibration fine via l'app Flutter
+            // Exemple: si capteur Gravity standard → Vmin=0.5V, Vmax=4.5V, Pmax=16 bar
+            // Pour corriger un offset (ex: -0.27 bar), ajuster Vmin/Vmax via l'app
+            float voltage_range = pressureVoltageMax - pressureVoltageMin;
+            if (voltage_range > 0.1) {  // Protection division par zéro
+                pressure_bar = (voltage_v - pressureVoltageMin) / voltage_range * pressureMaxBar;
+            } else {
+                pressure_bar = 0.0;  // Configuration invalide
+            }
         }
         else if (pressureSensorType == 1) {
-            // Conversion tension vers courant (I = V / R)
+            // Conversion Courant 2 fils: 4-20mA → 0-Pmax bar
             // Résistance de shunt pour 4-20mA pression (150Ω → 0.6V-3.0V)
+            // Utilise pressureMaxBar configurable via l'app Flutter
             float current_ma = (voltage_v / PRESSURE_SHUNT_RESISTOR) * 1000.0;
 
             // Vérification connexion capteur (>3.5mA)
             if (current_ma >= PRESSURE_CURRENT_DISCONNECTED) {
-                // Conversion 4-20mA → 0-16 bar
-                pressure_bar = ((current_ma - PRESSURE_CURRENT_MIN) / (PRESSURE_CURRENT_MAX - PRESSURE_CURRENT_MIN)) * 16.0;
+                // Conversion 4-20mA → 0-pressureMaxBar
+                pressure_bar = ((current_ma - PRESSURE_CURRENT_MIN) / (PRESSURE_CURRENT_MAX - PRESSURE_CURRENT_MIN)) * pressureMaxBar;
                 if (pressure_bar < 0) pressure_bar = 0;
             } else {
                 // Capteur déconnecté
@@ -656,17 +705,31 @@ void taskReadGPS(void *pvParameters) {
     }
 }
 
-// Tâche 4: Envoi des données BLE (toutes les 1000 ms)
+// Fonction helper: Récupérer l'adresse MAC complète
+String getFullMacAddress() {
+    uint8_t mac[6];
+    esp_read_mac(mac, ESP_MAC_WIFI_STA);
+    char macStr[18];
+    sprintf(macStr, "%02X%02X%02X%02X%02X%02X", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+    return String(macStr);
+}
+
+// Tâche 4: Envoi des données BLE en JSON (toutes les 1000 ms)
 void taskSendBLE(void *pvParameters) {
     TickType_t xLastWakeTime = xTaskGetTickCount();
     const TickType_t xFrequency = pdMS_TO_TICKS(delay_task_SendBLE);// 1000 ms
+
+    // Récupérer l'adresse MAC une seule fois au démarrage de la tâche
+    String macAddress = getFullMacAddress();
 
     for(;;) {
         vTaskDelayUntil(&xLastWakeTime, xFrequency);
 
         if (deviceConnected) {
             // Copie locale des données (avec mutex)
-            float local_pressure, local_sat, local_lon, local_llat, local_sspeed, local_debit1, local_debit2;
+            float local_pressure, local_sat, local_lon, local_llat, local_sspeed;
+            float local_debit1, local_debit2, local_debit3, local_debit4;
+            float local_debit1_420, local_debit2_420, local_debit3_420, local_debit4_420;
 
             if(xSemaphoreTake(xMutexData, portMAX_DELAY) == pdTRUE) {
                 local_pressure = sensorData.pressure;
@@ -674,18 +737,61 @@ void taskSendBLE(void *pvParameters) {
                 local_lon = sensorData.lon;
                 local_llat = sensorData.llat;
                 local_sspeed = sensorData.sspeed;
+
+                // Débits PCNT (fréquence)
                 local_debit1 = sensorData.debit1;
                 local_debit2 = sensorData.debit2;
+                local_debit3 = sensorData.debit3;
+                local_debit4 = sensorData.debit4;
+
+                // Débits 4-20mA
+                local_debit1_420 = sensorData.debit1_4_20mA;
+                local_debit2_420 = sensorData.debit2_4_20mA;
+                local_debit3_420 = sensorData.debit3_4_20mA;
+                local_debit4_420 = sensorData.debit4_4_20mA;
+
                 xSemaphoreGive(xMutexData);
             }
 
-            // Construction et envoi du message BLE
-            String bluetoothMsg = "A;" + String(local_pressure) + ";" + String(local_sat) + ";" +
-                                 String(local_lon) + ";" + String(local_llat) + ";" +
-                                 String(local_sspeed) + ";" + String(local_debit1) + ";" +
-                                 String(local_debit2) + "\n";
+            // Construction du JSON avec ArduinoJson
+            // Taille du document : ~350 bytes (estimé pour tous les champs)
+            StaticJsonDocument<512> doc;
 
-            pTxCharacteristic->setValue(bluetoothMsg.c_str());
+            // ID de trame (incrémenté à chaque envoi pour détecter les pertes)
+            doc["ID"] = frameID++;
+
+            // Adresse MAC (identifiant unique)
+            doc["MAC"] = macAddress;
+
+            // Pression (en bars)
+            doc["P"] = serialized(String(local_pressure, 2));
+
+            // Vitesse GPS (km/h)
+            doc["V"] = serialized(String(local_sspeed, 2));
+
+            // Débitmètres - Valeurs principales (4-20mA par défaut)
+            doc["DG1"] = serialized(String(local_debit1_420, 2));  // Gauche 1
+            doc["DD1"] = serialized(String(local_debit2_420, 2));  // Droit 1 (canal 2)
+            doc["DG2"] = serialized(String(local_debit3_420, 2));  // Gauche 2 (canal 3)
+            doc["DD2"] = serialized(String(local_debit4_420, 2));  // Droit 2 (canal 4)
+
+            // Débitmètres - Valeurs PCNT (suffixe "p" pour pulse counter)
+            doc["DG1p"] = serialized(String(local_debit1, 2));
+            doc["DD1p"] = serialized(String(local_debit2, 2));
+            doc["DG2p"] = serialized(String(local_debit3, 2));
+            doc["DD2p"] = serialized(String(local_debit4, 2));
+
+            // GPS (optionnel - champs supplémentaires ignorés par l'app)
+            doc["SAT"] = serialized(String(local_sat, 0));
+            doc["LAT"] = serialized(String(local_llat / 1000000.0, 6));
+            doc["LON"] = serialized(String(local_lon / 1000000.0, 6));
+
+            // Sérialisation en string
+            String jsonString;
+            serializeJson(doc, jsonString);
+
+            // Envoi via BLE
+            pTxCharacteristic->setValue(jsonString.c_str());
             pTxCharacteristic->notify();
         }
     }
@@ -855,6 +961,245 @@ void taskHandleCommands(void *pvParameters) {
                     Serial.println(device_name);
                     Serial.println("ATTENTION: Redémarrer l'ESP32 pour appliquer le nouveau nom BLE");
                 }
+                messageRecu = "";
+            }
+
+            // ========== COMMANDE GET_COEFF (FORMAT JSON) ==========
+            else if (messageRecu == "get_coeff") {
+                // Charger les coefficients depuis NVS
+                preferences.begin("calibration", true);  // Mode lecture seule
+
+                // Créer le JSON de réponse
+                StaticJsonDocument<1024> responseDoc;
+                JsonObject coeff = responseDoc.createNestedObject("coeff");
+
+                // Pression : conserver A et B
+                JsonObject coeffP = coeff.createNestedObject("P");
+                coeffP["A"] = preferences.getFloat("P_A", 1.0);
+                coeffP["B"] = preferences.getFloat("P_B", 0.0);
+
+                // Type de capteur de pression (0=Gravity, 1=4-20mA)
+                responseDoc["pressureSensorType"] = preferences.getUInt("sensP", 0);
+
+                // Nouveaux paramètres de calibration pression (mode Tension 3 fils)
+                responseDoc["pressureMaxBar"] = preferences.getFloat("P_max", 16.0);
+                responseDoc["pressureVoltageMin"] = preferences.getFloat("P_Vmin", 0.5);
+                responseDoc["pressureVoltageMax"] = preferences.getFloat("P_Vmax", 4.5);
+
+                // Débitmètres : PPL (pulse per liter) et flow (débit max en L/min)
+                // DG1 = debit1_4_20mA, DD1 = debit2_4_20mA, DG2 = debit3_4_20mA, DD2 = debit4_4_20mA
+                JsonObject coeffDG1 = coeff.createNestedObject("DG1");
+                coeffDG1["PPL"] = preferences.getUInt("DG1_PPL", NbImpulsionsDebitmetre1);
+                coeffDG1["flow"] = preferences.getUInt("DG1_flow", maxFlow1);
+
+                JsonObject coeffDD1 = coeff.createNestedObject("DD1");
+                coeffDD1["PPL"] = preferences.getUInt("DD1_PPL", NbImpulsionsDebitmetre2);
+                coeffDD1["flow"] = preferences.getUInt("DD1_flow", maxFlow2);
+
+                JsonObject coeffDG2 = coeff.createNestedObject("DG2");
+                coeffDG2["PPL"] = preferences.getUInt("DG2_PPL", NbImpulsionsDebitmetre3);
+                coeffDG2["flow"] = preferences.getUInt("DG2_flow", maxFlow3);
+
+                JsonObject coeffDD2 = coeff.createNestedObject("DD2");
+                coeffDD2["PPL"] = preferences.getUInt("DD2_PPL", NbImpulsionsDebitmetre4);
+                coeffDD2["flow"] = preferences.getUInt("DD2_flow", maxFlow4);
+
+                // Anciens débitmètres DG3, DG4, DD3, DD4 (pas utilisés mais pour compatibilité app)//TODO implémenter les valeurs par defaut 
+                JsonObject coeffDG3 = coeff.createNestedObject("DG3");
+                coeffDG3["PPL"] = preferences.getUInt("DG3_PPL", 1000);
+                coeffDG3["flow"] = preferences.getUInt("DG3_flow", 150);
+
+                JsonObject coeffDG4 = coeff.createNestedObject("DG4");
+                coeffDG4["PPL"] = preferences.getUInt("DG4_PPL", 1000);
+                coeffDG4["flow"] = preferences.getUInt("DG4_flow", 150);
+
+                JsonObject coeffDD3 = coeff.createNestedObject("DD3");
+                coeffDD3["PPL"] = preferences.getUInt("DD3_PPL", 1000);
+                coeffDD3["flow"] = preferences.getUInt("DD3_flow", 150);
+
+                JsonObject coeffDD4 = coeff.createNestedObject("DD4");
+                coeffDD4["PPL"] = preferences.getUInt("DD4_PPL", 1000);
+                coeffDD4["flow"] = preferences.getUInt("DD4_flow", 150);
+
+                preferences.end();
+
+                // Sérialiser et envoyer
+                String jsonResponse;
+                serializeJson(responseDoc, jsonResponse);
+
+                if (deviceConnected) {
+                    pTxCharacteristic->setValue(jsonResponse.c_str());
+                    pTxCharacteristic->notify();
+                    Serial.println("Coefficients envoyés:");
+                    Serial.println(jsonResponse);
+                }
+
+                messageRecu = "";
+            }
+
+            // ========== COMMANDE UPDATE_COEFF (FORMAT JSON) ==========
+            else if (messageRecu == "update_coeff") {
+                // Parser le JSON complet stocké dans valeurRecueStr
+                StaticJsonDocument<1024> doc;
+                DeserializationError error = deserializeJson(doc, valeurRecueStr);
+
+                if (!error && doc.containsKey("update_coeff")) {
+                    JsonObject coeffs = doc["update_coeff"];
+
+                    preferences.begin("calibration", false);  // Mode écriture
+
+                    // Sauvegarder le type de capteur de pression
+                    if (coeffs.containsKey("pressureSensorType")) {
+                        int sensorType = coeffs["pressureSensorType"]["value"].as<int>();
+                        preferences.putUInt("sensP", sensorType);
+                        pressureSensorType = sensorType;
+                        Serial.print("Type capteur pression mis à jour: ");
+                        Serial.println(sensorType == 0 ? "Gravity analogique" : "4-20mA");
+                    }
+
+                    // Sauvegarder les nouveaux paramètres de calibration pression (mode Tension 3 fils)
+                    if (coeffs.containsKey("pressureMaxBar")) {
+                        float pMax = coeffs["pressureMaxBar"].as<float>();
+                        if (pMax > 0.0) {
+                            preferences.putFloat("P_max", pMax);
+                            pressureMaxBar = pMax;
+                            Serial.printf("Pression max mise à jour: %.2f bar\r\n", pMax);
+                        }
+                    }
+                    if (coeffs.containsKey("pressureVoltageMin")) {
+                        float vMin = coeffs["pressureVoltageMin"].as<float>();
+                        if (vMin >= 0.0) {
+                            preferences.putFloat("P_Vmin", vMin);
+                            pressureVoltageMin = vMin;
+                            Serial.printf("Tension min mise à jour: %.3f V\r\n", vMin);
+                        }
+                    }
+                    if (coeffs.containsKey("pressureVoltageMax")) {
+                        float vMax = coeffs["pressureVoltageMax"].as<float>();
+                        if (vMax > 0.0) {
+                            preferences.putFloat("P_Vmax", vMax);
+                            pressureVoltageMax = vMax;
+                            Serial.printf("Tension max mise à jour: %.3f V\r\n", vMax);
+                        }
+                    }
+
+                    // Sauvegarder les coefficients pour chaque capteur
+                    // Pression : A et B
+                    if (coeffs.containsKey("P")) {
+                        float coeffA = coeffs["P"]["A"].as<float>();
+                        float coeffB = coeffs["P"]["B"].as<float>();
+
+                        // Utiliser les valeurs par défaut si non fournies (A=1.0, B=0.0)
+                        preferences.putFloat("P_A", (coeffA != 0.0) ? coeffA : 1.0);
+                        preferences.putFloat("P_B", coeffB);  // B peut être 0, c'est valide
+
+                        // Mettre à jour les variables globales
+                        if (coeffA != 0.0) correctionManometreA = (int)(coeffA * 100);
+                        correctionManometreB = (int)(coeffB * 100);
+
+                        Serial.printf("Coeff P A=%.2f, B=%.2f\r\n", coeffA, coeffB);
+                    }
+
+                    // Débitmètres : PPL et flow
+                    if (coeffs.containsKey("DG1")) {
+                        // Récupérer les valeurs avec valeurs par défaut si absentes
+                        uint32_t ppl = coeffs["DG1"]["PPL"].as<uint32_t>();
+                        uint32_t flow = coeffs["DG1"]["flow"].as<uint32_t>();
+
+                        // Sauvegarder dans NVS
+                        preferences.putUInt("DG1_PPL", ppl ? ppl : NbImpulsionsDebitmetre1);
+                        preferences.putUInt("DG1_flow", flow ? flow : maxFlow1);
+
+                        // Mettre à jour les variables globales
+                        if (ppl) NbImpulsionsDebitmetre1 = ppl;
+                        if (flow) maxFlow1 = flow;
+
+                        Serial.printf("Coeff DG1 PPL=%u, Max flow=%uL/min\r\n", NbImpulsionsDebitmetre1, maxFlow1);
+                    }
+                    if (coeffs.containsKey("DD1")) {
+                        // Récupérer les valeurs avec valeurs par défaut si absentes
+                        uint32_t ppl = coeffs["DD1"]["PPL"].as<uint32_t>();
+                        uint32_t flow = coeffs["DD1"]["flow"].as<uint32_t>();
+
+                        // Sauvegarder dans NVS
+                        preferences.putUInt("DD1_PPL", ppl ? ppl : NbImpulsionsDebitmetre2);
+                        preferences.putUInt("DD1_flow", flow ? flow : maxFlow2);
+
+                        // Mettre à jour les variables globales
+                        if (ppl) NbImpulsionsDebitmetre2 = ppl;
+                        if (flow) maxFlow2 = flow;
+
+                        Serial.printf("Coeff DD1 PPL=%u, Max flow=%uL/min\r\n", NbImpulsionsDebitmetre2, maxFlow2);
+                    }
+                    if (coeffs.containsKey("DG2")) {
+                        // Récupérer les valeurs avec valeurs par défaut si absentes
+                        uint32_t ppl = coeffs["DG2"]["PPL"].as<uint32_t>();
+                        uint32_t flow = coeffs["DG2"]["flow"].as<uint32_t>();
+
+                        // Sauvegarder dans NVS
+                        preferences.putUInt("DG2_PPL", ppl ? ppl : NbImpulsionsDebitmetre3);
+                        preferences.putUInt("DG2_flow", flow ? flow : maxFlow3);
+
+                        // Mettre à jour les variables globales
+                        if (ppl) NbImpulsionsDebitmetre3 = ppl;
+                        if (flow) maxFlow3 = flow;
+
+                        Serial.printf("Coeff DG2 PPL=%u, Max flow=%uL/min\r\n", NbImpulsionsDebitmetre3, maxFlow3);
+                    }
+                    if (coeffs.containsKey("DD2")) {
+                        // Récupérer les valeurs avec valeurs par défaut si absentes
+                        uint32_t ppl = coeffs["DD2"]["PPL"].as<uint32_t>();
+                        uint32_t flow = coeffs["DD2"]["flow"].as<uint32_t>();
+
+                        // Sauvegarder dans NVS
+                        preferences.putUInt("DD2_PPL", ppl ? ppl : NbImpulsionsDebitmetre4);
+                        preferences.putUInt("DD2_flow", flow ? flow : maxFlow4);
+
+                        // Mettre à jour les variables globales
+                        if (ppl) NbImpulsionsDebitmetre4 = ppl;
+                        if (flow) maxFlow4 = flow;
+
+                        Serial.printf("Coeff DD2 PPL=%u, Max flow=%uL/min\r\n", NbImpulsionsDebitmetre4, maxFlow4);
+                    }
+                    // DG3, DG4, DD3, DD4 : Débitmètres 5-8 (non implémentés matériellement)
+                    // Ces débitmètres sont gardés pour compatibilité app mais n'ont pas de hardware associé
+                    if (coeffs.containsKey("DG3")) {
+                        uint32_t ppl = coeffs["DG3"]["PPL"].as<uint32_t>();
+                        uint32_t flow = coeffs["DG3"]["flow"].as<uint32_t>();
+                        preferences.putUInt("DG3_PPL", ppl ? ppl : 1000);
+                        preferences.putUInt("DG3_flow", flow ? flow : 150);
+                        Serial.printf("Coeff DG3 PPL=%u, Max flow=%uL/min (non utilisé)\r\n", ppl, flow);
+                    }
+                    if (coeffs.containsKey("DG4")) {
+                        uint32_t ppl = coeffs["DG4"]["PPL"].as<uint32_t>();
+                        uint32_t flow = coeffs["DG4"]["flow"].as<uint32_t>();
+                        preferences.putUInt("DG4_PPL", ppl ? ppl : 1000);
+                        preferences.putUInt("DG4_flow", flow ? flow : 150);
+                        Serial.printf("Coeff DG4 PPL=%u, Max flow=%uL/min (non utilisé)\r\n", ppl, flow);
+                    }
+                    if (coeffs.containsKey("DD3")) {
+                        uint32_t ppl = coeffs["DD3"]["PPL"].as<uint32_t>();
+                        uint32_t flow = coeffs["DD3"]["flow"].as<uint32_t>();
+                        preferences.putUInt("DD3_PPL", ppl ? ppl : 1000);
+                        preferences.putUInt("DD3_flow", flow ? flow : 150);
+                        Serial.printf("Coeff DD3 PPL=%u, Max flow=%uL/min (non utilisé)\r\n", ppl, flow);
+                    }
+                    if (coeffs.containsKey("DD4")) {
+                        uint32_t ppl = coeffs["DD4"]["PPL"].as<uint32_t>();
+                        uint32_t flow = coeffs["DD4"]["flow"].as<uint32_t>();
+                        preferences.putUInt("DD4_PPL", ppl ? ppl : 1000);
+                        preferences.putUInt("DD4_flow", flow ? flow : 150);
+                        Serial.printf("Coeff DD4 PPL=%u, Max flow=%uL/min (non utilisé)\r\n", ppl, flow);
+                    }
+
+                    preferences.end();
+
+                    Serial.println("Coefficients de calibration sauvegardés");
+                }
+                else {
+                    Serial.println("Erreur parsing update_coeff JSON");
+                }
+
                 messageRecu = "";
             }
 
@@ -1183,18 +1528,88 @@ void setup() {
 
     // Récupération des préférences
     preferences.begin("constantes", false);
-    int constDeb1 = preferences.getUInt("constDeb1", 0);
-    int constDeb2 = preferences.getUInt("constDeb2", 0);
-    int constManA = preferences.getUInt("constManA", 0);
-    int constManB = preferences.getUInt("constManB", 0);
-    int constSensP = preferences.getUInt("sensP", 0);  // Type capteur pression (0=Gravity par défaut, 1=4-20mA)
-    preferences.end();
 
-    if (constDeb1 != 0) NbImpulsionsDebitmetre1 = constDeb1;
-    if (constDeb2 != 0) NbImpulsionsDebitmetre2 = constDeb2;
-    if (constManA != 0) correctionManometreA = constManA;
-    if (constManB != 0) correctionManometreB = constManB;
-    pressureSensorType = constSensP;  // 0=Gravity (défaut), 1=4-20mA
+    // Migration: Charger les anciennes clés si les nouvelles n'existent pas
+    // Pression : nouvelles clés P_A, P_B (float) remplacent constManA, constManB (uint)
+    float calibA = preferences.getFloat("P_A", 0.0);
+    float calibB = preferences.getFloat("P_B", 0.0);
+
+    if (calibA == 0.0) {
+        // Pas de nouvelle valeur, essayer de migrer l'ancienne
+        int constManA = preferences.getUInt("constManA", 0);
+        if (constManA != 0) {
+            calibA = constManA / 100.0;
+            preferences.putFloat("P_A", calibA);  // Migration
+            Serial.printf("Migration P_A: %d -> %.2f\r\n", constManA, calibA);
+        } else {
+            calibA = 1.0;  // Valeur par défaut
+        }
+    }
+
+    if (calibB == 0.0) {
+        int constManB = preferences.getUInt("constManB", 0);
+        if (constManB != 0) {
+            calibB = constManB / 100.0;
+            preferences.putFloat("P_B", calibB);  // Migration
+            Serial.printf("Migration P_B: %d -> %.2f\r\n", constManB, calibB);
+        }
+        // Sinon calibB reste à 0.0 (valide)
+    }
+
+    correctionManometreA = (int)(calibA * 100);
+    correctionManometreB = (int)(calibB * 100);
+
+    // Débitmètres : nouvelles clés DG1_PPL, DG1_flow, etc.
+    uint32_t dg1_ppl = preferences.getUInt("DG1_PPL", 0);
+    uint32_t dg1_flow = preferences.getUInt("DG1_flow", 0);
+    uint32_t dd1_ppl = preferences.getUInt("DD1_PPL", 0);
+    uint32_t dd1_flow = preferences.getUInt("DD1_flow", 0);
+
+    if (dg1_ppl == 0) {
+        // Migration depuis constDeb1
+        int constDeb1 = preferences.getUInt("constDeb1", 0);
+        if (constDeb1 != 0) {
+            dg1_ppl = constDeb1;
+            preferences.putUInt("DG1_PPL", dg1_ppl);
+            Serial.printf("Migration DG1_PPL: %d\r\n", dg1_ppl);
+        }
+    }
+
+    if (dd1_ppl == 0) {
+        // Migration depuis constDeb2
+        int constDeb2 = preferences.getUInt("constDeb2", 0);
+        if (constDeb2 != 0) {
+            dd1_ppl = constDeb2;
+            preferences.putUInt("DD1_PPL", dd1_ppl);
+            Serial.printf("Migration DD1_PPL: %d\r\n", dd1_ppl);
+        }
+    }
+
+    if (dg1_ppl != 0) NbImpulsionsDebitmetre1 = dg1_ppl;
+    if (dg1_flow != 0) maxFlow1 = dg1_flow;
+    if (dd1_ppl != 0) NbImpulsionsDebitmetre2 = dd1_ppl;
+    if (dd1_flow != 0) maxFlow2 = dd1_flow;
+
+    // Charger les autres débitmètres (DG2, DD2, etc.)
+    uint32_t dg2_ppl = preferences.getUInt("DG2_PPL", 0);
+    uint32_t dg2_flow = preferences.getUInt("DG2_flow", 0);
+    uint32_t dd2_ppl = preferences.getUInt("DD2_PPL", 0);
+    uint32_t dd2_flow = preferences.getUInt("DD2_flow", 0);
+
+    if (dg2_ppl != 0) NbImpulsionsDebitmetre3 = dg2_ppl;
+    if (dg2_flow != 0) maxFlow3 = dg2_flow;
+    if (dd2_ppl != 0) NbImpulsionsDebitmetre4 = dd2_ppl;
+    if (dd2_flow != 0) maxFlow4 = dd2_flow;
+
+    // Type capteur pression
+    pressureSensorType = preferences.getUInt("sensP", 0);  // 0=Gravity (défaut), 1=4-20mA
+
+    // Nouveaux paramètres de calibration pression (mode Tension 3 fils)
+    pressureMaxBar = preferences.getFloat("P_max", 16.0);        // Pression max (bar)
+    pressureVoltageMin = preferences.getFloat("P_Vmin", 0.5);    // Tension min (V)
+    pressureVoltageMax = preferences.getFloat("P_Vmax", 4.5);    // Tension max (V)
+
+    preferences.end();
 
     Serial.print("Type capteur pression: ");
     Serial.println(pressureSensorType == 0 ? "Gravity analogique (0.5-4.5V, 0-16 bar)" : "4-20mA (0-16 bar)");
