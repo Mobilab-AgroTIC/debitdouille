@@ -119,9 +119,9 @@ class DataProvider with ChangeNotifier {
     await _connectionStateSub?.cancel();
     _connectionStateSub = ble.connectionStateStream.listen((isConnected) {
       _isReconnecting = ble.isReconnecting;
-      if (!isConnected && !_isReconnecting) {
-        // Déconnexion définitive
-        lastTick = null;
+      if (!isConnected) {
+        // Déconnexion ou reconnexion en cours - réinitialisation des données
+        _resetData();
       }
       notifyListeners();
     });
@@ -140,11 +140,20 @@ class DataProvider with ChangeNotifier {
 
     _isReconnecting = false;
 
-    // On force l'UI à recalculer isAlive => rouge immédiat
+    // Réinitialiser les données et l'état
+    _resetData();
+    notifyListeners();
+  }
+
+  /// 🔄 Réinitialise toutes les données à zéro lors d'une déconnexion
+  void _resetData() {
+    data = CapteurData.zero();
+    lastTick = null;
+    lastJson = null;
     _aliveTimer?.cancel();
     _aliveTimer = null;
-    lastTick = null;
-    notifyListeners();
+    _lastFrameIds.clear();
+    _hasPacketLoss = false;
   }
 
   void _onJson(String s) {
