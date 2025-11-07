@@ -1,8 +1,8 @@
 // Configuration de la version matérielle (à modifier selon votre carte)
-#define V1          1//Esp32 carte V1
-#define V2_C3       2//carte V2 XIAO ESP32-C3
-#define V2_S3       3//carte V2 XIAO ESP32-S3
-#define DEBITDOUILLE_VERSION V2_C3  // <-- Modifier ici pour changer de version
+#define V1          1  // Esp32 carte V1 (NodeMCU-32S)
+#define V2_C3       2  // carte V2 XIAO ESP32-C3
+#define V2_S3       3  // carte V2 XIAO ESP32-S3
+#define DEBITDOUILLE_VERSION V2_S3  // <-- Modifier ici pour changer de version
 
 #include <BLEDevice.h>
 #include <BLEServer.h>
@@ -100,6 +100,12 @@ bool oldDeviceConnected = false;
 #define TXD2 17
 #define DEBITMETRE1_PIN 32
 #define DEBITMETRE2_PIN 33
+#define DEBITMETRE3_PIN 13//NOT USED
+#define DEBITMETRE4_PIN 12//NOT USED
+#define PIN_PWR_12V_OUT 14//NOT USED
+#define PIN_LED         2
+#define PIN_SDA         21  // I2C SDA par défaut ESP32
+#define PIN_SCL         22  // I2C SCL par défaut ESP32
 #elif  DEBITDOUILLE_VERSION == V2_C3//https://wiki.seeedstudio.com/XIAO_ESP32C3_Getting_Started/
 #define PIN_PRESSURE 3
 #define RXD2 20
@@ -125,6 +131,15 @@ bool oldDeviceConnected = false;
 #define PIN_LED         1 //
 #define PIN_PWR_12V_OUT 9 //BTS7004
 #endif
+
+// Variables pour l'auto-détection GPS RX/TX
+uint8_t gpsRxPin = RXD2;           // Pin RX actuelle
+uint8_t gpsTxPin = TXD2;           // Pin TX actuelle
+uint16_t gpsFailCounter = 0;       // Compteur d'échecs de communication GPS
+bool gpsPinsSwapped = false;       // Indicateur si les pins ont été inversés
+#define GPS_FAIL_THRESHOLD 30      // Nombre d'échecs avant d'inverser les pins (30 secondes)
+#define GPS_RETRY_THRESHOLD 60     // Nombre d'échecs avant de ré-inverser (si toujours pas de signal)
+unsigned long lastGpsDataTime = 0; // Timestamp de la dernière donnée GPS valide
 
 // Variables pour comptage des impulsions
 #if DEBITDOUILLE_VERSION == V2_S3
@@ -700,17 +715,49 @@ void taskReadPressure(void *pvParameters) {
     }
 }
 
-// Tâche 3: Lecture du GPS (toutes les 100 ms)
+// Fonction pour réinitialiser le GPS avec inversion des pins RX/TX
+void reinitGPSWithSwappedPins() {
+    // Arrêter la communication série actuelle
+    neogps.end();
+    vTaskDelay(pdMS_TO_TICKS(100));  // Petit délai pour s'assurer que le port est libéré
+
+    // Inverser les pins
+    uint8_t tempPin = gpsRxPin;
+    gpsRxPin = gpsTxPin;
+    gpsTxPin = tempPin;
+
+    // Réinitialiser le port série avec les nouvelles pins
+    neogps.begin(9600, SERIAL_8N1, gpsRxPin, gpsTxPin);
+
+    // Réinitialiser les compteurs
+    gpsFailCounter = 0;
+    gpsPinsSwapped = !gpsPinsSwapped;
+    lastGpsDataTime = millis();
+
+    // Message de debug
+    Serial.printf("║ GNSS -> Nouvelle configuration: RX=GPIO%d, TX=GPIO%d\n", gpsRxPin, gpsTxPin);
+    Serial.printf("║ GNSS -> Tentative: %s\n", gpsPinsSwapped ? "Pins inversés" : "Pins d'origine");
+}
+
+// Tâche 3: Lecture du GPS (toutes les 100 ms avec détection automatique RX/TX)
 void taskReadGPS(void *pvParameters) {
     TickType_t xLastWakeTime = xTaskGetTickCount();
-    const TickType_t xFrequency = pdMS_TO_TICKS(delay_task_ReadGPS);  // 100 ms
+    const TickType_t xFrequency = pdMS_TO_TICKS(delay_task_ReadGPS);  // 1000 ms
+
+    // Variables de détection
+    bool gpsDataReceived = false;
+    unsigned long lastCheckTime = millis();
 
     for(;;) {
         vTaskDelayUntil(&xLastWakeTime, xFrequency);
 
+        gpsDataReceived = false;
+
         // Lecture des données GPS disponibles
         while (neogps.available()) {
-            gps.encode(neogps.read());
+            if (gps.encode(neogps.read())) {
+                gpsDataReceived = true;
+            }
         }
 
         // Si position GPS valide, mettre à jour les données
@@ -727,6 +774,26 @@ void taskReadGPS(void *pvParameters) {
                 sensorData.llat = llat_val;
                 sensorData.sspeed = sspeed_val;
                 xSemaphoreGive(xMutexData);
+            }
+
+            // GPS fonctionne correctement
+            gpsFailCounter = 0;
+            lastGpsDataTime = millis();
+        }
+        // Détection d'absence de données GPS
+        else if (!gpsDataReceived || !gps.location.isUpdated()) {
+            // Incrémenter le compteur d'échecs toutes les secondes
+            gpsFailCounter++;
+
+            // Premier basculement après GPS_FAIL_THRESHOLD échecs
+            if (gpsFailCounter == GPS_FAIL_THRESHOLD && !gpsPinsSwapped) {
+                Serial.println(" 📌   GNSS Aucune donnée reçue, tentative d'inversion RX/TX...");
+                reinitGPSWithSwappedPins();
+            }
+            // Second basculement après GPS_RETRY_THRESHOLD échecs (retour à la config d'origine)
+            else if (gpsFailCounter >= GPS_RETRY_THRESHOLD && gpsPinsSwapped) {
+                Serial.println(" 📌   GNSS: Toujours pas de signal, retour à la configuration d'origine...");
+                reinitGPSWithSwappedPins();
             }
         }
     }
@@ -802,16 +869,18 @@ void taskSendBLE(void *pvParameters) {
             doc["V"] = serialized(String(local_sspeed, 2));
 
             // Débitmètres - Valeurs principales (4-20mA par défaut)
-            doc["DG1"] = serialized(String(local_debit1_420, 2));  // Gauche 1
-            doc["DD1"] = serialized(String(local_debit2_420, 2));  // Droit 1 (canal 2)
-            doc["DG2"] = serialized(String(local_debit3_420, 2));  // Gauche 2 (canal 3)
-            doc["DD2"] = serialized(String(local_debit4_420, 2));  // Droit 2 (canal 4)
+            // Mapping: DG1=ADS0, DG2=ADS1, DD1=ADS2, DD2=ADS3
+            doc["DG1"] = serialized(String(local_debit1_420, 2));  // Débitmètre Gauche 1 (ADS canal 0)
+            doc["DG2"] = serialized(String(local_debit2_420, 2));  // Débitmètre Gauche 2 (ADS canal 1)
+            doc["DD1"] = serialized(String(local_debit3_420, 2));  // Débitmètre Droit 1 (ADS canal 2)
+            doc["DD2"] = serialized(String(local_debit4_420, 2));  // Débitmètre Droit 2 (ADS canal 3)
 
             // Débitmètres - Valeurs PCNT (suffixe "p" pour pulse counter)
-            doc["DG1p"] = serialized(String(local_debit1, 2));
-            doc["DD1p"] = serialized(String(local_debit2, 2));
-            doc["DG2p"] = serialized(String(local_debit3, 2));
-            doc["DD2p"] = serialized(String(local_debit4, 2));
+            // Mapping: DG1=PCNT1, DG2=PCNT2, DD1=PCNT4, DD2=PCNT3
+            doc["DG1p"] = serialized(String(local_debit1, 2));     // Débitmètre Gauche 1 (PCNT1)
+            doc["DG2p"] = serialized(String(local_debit2, 2));     // Débitmètre Gauche 2 (PCNT2)
+            doc["DD1p"] = serialized(String(local_debit4, 2));     // Débitmètre Droit 1 (PCNT4)
+            doc["DD2p"] = serialized(String(local_debit3, 2));     // Débitmètre Droit 2 (PCNT3)
 
             // GPS (optionnel - champs supplémentaires ignorés par l'app)
             doc["SAT"] = serialized(String(local_sat, 0));
@@ -1526,7 +1595,10 @@ void setupFreeRTOSTasks(void){
 
 void setup() {
     Serial.begin(115200);
-    neogps.begin(9600, SERIAL_8N1, RXD2, TXD2);
+
+    // Initialisation GPS avec les pins par défaut (auto-détection activée dans taskReadGPS)
+    neogps.begin(9600, SERIAL_8N1, gpsRxPin, gpsTxPin);
+    Serial.printf("GPS initialisé: RX=GPIO%d, TX=GPIO%d (auto-détection activée)\n", gpsRxPin, gpsTxPin);
 
     // Configuration de l'ADC interne (pour le capteur de pression)
     // analogReadMilliVolts() utilise automatiquement la calibration eFuse de l'ESP32
@@ -1588,90 +1660,130 @@ void setup() {
     pinMode(PIN_PWR_12V_OUT, OUTPUT);
     digitalWrite(PIN_PWR_12V_OUT,HIGH);
 
-    // Récupération des préférences
-    preferences.begin("constantes", false);
+    // ========== CHARGEMENT DES PARAMÈTRES DE CALIBRATION ==========
+    // Priorité au namespace "calibration" (utilisé par update_coeff depuis l'app Flutter)
+    // Si absent, fallback sur "constantes" (anciennes versions) pour migration
 
-    // Migration: Charger les anciennes clés si les nouvelles n'existent pas
-    // Pression : nouvelles clés P_A, P_B (float) remplacent constManA, constManB (uint)
+    preferences.begin("calibration", false);
+
+    // ===== PRESSION : Type capteur et paramètres =====
+    pressureSensorType = preferences.getUInt("sensP", 0);  // 0=Gravity (défaut), 1=4-20mA
+    pressureMaxBar = preferences.getFloat("P_max", 0.0);
+    pressureVoltageMin = preferences.getFloat("P_Vmin", 0.0);
+    pressureVoltageMax = preferences.getFloat("P_Vmax", 0.0);
+
+    // Coefficients de correction pression
     float calibA = preferences.getFloat("P_A", 0.0);
     float calibB = preferences.getFloat("P_B", 0.0);
 
-    if (calibA == 0.0) {
-        // Pas de nouvelle valeur, essayer de migrer l'ancienne
-        int constManA = preferences.getUInt("constManA", 0);
-        if (constManA != 0) {
-            calibA = constManA / 100.0;
-            preferences.putFloat("P_A", calibA);  // Migration
-            Serial.printf("Migration P_A: %d -> %.2f\r\n", constManA, calibA);
-        } else {
-            calibA = 1.0;  // Valeur par défaut
-        }
-    }
-
-    if (calibB == 0.0) {
-        int constManB = preferences.getUInt("constManB", 0);
-        if (constManB != 0) {
-            calibB = constManB / 100.0;
-            preferences.putFloat("P_B", calibB);  // Migration
-            Serial.printf("Migration P_B: %d -> %.2f\r\n", constManB, calibB);
-        }
-        // Sinon calibB reste à 0.0 (valide)
-    }
-
-    correctionManometreA = (int)(calibA * 100);
-    correctionManometreB = (int)(calibB * 100);
-
-    // Débitmètres : nouvelles clés DG1_PPL, DG1_flow, etc.
+    // ===== DÉBITMÈTRES : PPL et flow =====
     uint32_t dg1_ppl = preferences.getUInt("DG1_PPL", 0);
     uint32_t dg1_flow = preferences.getUInt("DG1_flow", 0);
     uint32_t dd1_ppl = preferences.getUInt("DD1_PPL", 0);
     uint32_t dd1_flow = preferences.getUInt("DD1_flow", 0);
-
-    if (dg1_ppl == 0) {
-        // Migration depuis constDeb1
-        int constDeb1 = preferences.getUInt("constDeb1", 0);
-        if (constDeb1 != 0) {
-            dg1_ppl = constDeb1;
-            preferences.putUInt("DG1_PPL", dg1_ppl);
-            Serial.printf("Migration DG1_PPL: %d\r\n", dg1_ppl);
-        }
-    }
-
-    if (dd1_ppl == 0) {
-        // Migration depuis constDeb2
-        int constDeb2 = preferences.getUInt("constDeb2", 0);
-        if (constDeb2 != 0) {
-            dd1_ppl = constDeb2;
-            preferences.putUInt("DD1_PPL", dd1_ppl);
-            Serial.printf("Migration DD1_PPL: %d\r\n", dd1_ppl);
-        }
-    }
-
-    if (dg1_ppl != 0) NbImpulsionsDebitmetre1 = dg1_ppl;
-    if (dg1_flow != 0) maxFlow1 = dg1_flow;
-    if (dd1_ppl != 0) NbImpulsionsDebitmetre2 = dd1_ppl;
-    if (dd1_flow != 0) maxFlow2 = dd1_flow;
-
-    // Charger les autres débitmètres (DG2, DD2, etc.)
     uint32_t dg2_ppl = preferences.getUInt("DG2_PPL", 0);
     uint32_t dg2_flow = preferences.getUInt("DG2_flow", 0);
     uint32_t dd2_ppl = preferences.getUInt("DD2_PPL", 0);
     uint32_t dd2_flow = preferences.getUInt("DD2_flow", 0);
 
+    preferences.end();
+
+    // ===== MIGRATION depuis "constantes" si valeurs absentes dans "calibration" =====
+    if (calibA == 0.0 || pressureMaxBar == 0.0 || dg1_ppl == 0) {
+        Serial.println("Migration des anciennes constantes vers calibration...");
+        preferences.begin("constantes", false);
+
+        // Migration P_A, P_B
+        if (calibA == 0.0) {
+            calibA = preferences.getFloat("P_A", 0.0);
+            if (calibA == 0.0) {
+                int constManA = preferences.getUInt("constManA", 0);
+                if (constManA != 0) {
+                    calibA = constManA / 100.0;
+                    Serial.printf("Migration P_A: %d -> %.2f\r\n", constManA, calibA);
+                } else {
+                    calibA = 1.0;  // Valeur par défaut
+                }
+            }
+        }
+        if (calibB == 0.0) {
+            calibB = preferences.getFloat("P_B", 0.0);
+            if (calibB == 0.0) {
+                int constManB = preferences.getUInt("constManB", 0);
+                if (constManB != 0) {
+                    calibB = constManB / 100.0;
+                    Serial.printf("Migration P_B: %d -> %.2f\r\n", constManB, calibB);
+                }
+            }
+        }
+
+        // Migration paramètres pression (valeurs par défaut si absentes)
+        if (pressureMaxBar == 0.0) pressureMaxBar = 16.0;
+        if (pressureVoltageMin == 0.0) pressureVoltageMin = 0.5;
+        if (pressureVoltageMax == 0.0) pressureVoltageMax = 4.5;
+
+        // Migration débitmètres
+        if (dg1_ppl == 0) {
+            dg1_ppl = preferences.getUInt("DG1_PPL", 0);
+            if (dg1_ppl == 0) {
+                int constDeb1 = preferences.getUInt("constDeb1", 0);
+                if (constDeb1 != 0) {
+                    dg1_ppl = constDeb1;
+                    Serial.printf("Migration DG1_PPL: %d\r\n", dg1_ppl);
+                }
+            }
+        }
+        if (dg1_flow == 0) dg1_flow = preferences.getUInt("DG1_flow", 0);
+
+        if (dd1_ppl == 0) {
+            dd1_ppl = preferences.getUInt("DD1_PPL", 0);
+            if (dd1_ppl == 0) {
+                int constDeb2 = preferences.getUInt("constDeb2", 0);
+                if (constDeb2 != 0) {
+                    dd1_ppl = constDeb2;
+                    Serial.printf("Migration DD1_PPL: %d\r\n", dd1_ppl);
+                }
+            }
+        }
+        if (dd1_flow == 0) dd1_flow = preferences.getUInt("DD1_flow", 0);
+
+        if (dg2_ppl == 0) dg2_ppl = preferences.getUInt("DG2_PPL", 0);
+        if (dg2_flow == 0) dg2_flow = preferences.getUInt("DG2_flow", 0);
+        if (dd2_ppl == 0) dd2_ppl = preferences.getUInt("DD2_PPL", 0);
+        if (dd2_flow == 0) dd2_flow = preferences.getUInt("DD2_flow", 0);
+
+        preferences.end();
+
+        // Sauvegarder les valeurs migrées dans "calibration" pour unifier le stockage
+        preferences.begin("calibration", false);
+        if (calibA != 0.0) preferences.putFloat("P_A", calibA);
+        if (calibB != 0.0) preferences.putFloat("P_B", calibB);
+        if (pressureMaxBar != 0.0) preferences.putFloat("P_max", pressureMaxBar);
+        if (pressureVoltageMin != 0.0) preferences.putFloat("P_Vmin", pressureVoltageMin);
+        if (pressureVoltageMax != 0.0) preferences.putFloat("P_Vmax", pressureVoltageMax);
+        if (dg1_ppl != 0) preferences.putUInt("DG1_PPL", dg1_ppl);
+        if (dg1_flow != 0) preferences.putUInt("DG1_flow", dg1_flow);
+        if (dd1_ppl != 0) preferences.putUInt("DD1_PPL", dd1_ppl);
+        if (dd1_flow != 0) preferences.putUInt("DD1_flow", dd1_flow);
+        if (dg2_ppl != 0) preferences.putUInt("DG2_PPL", dg2_ppl);
+        if (dg2_flow != 0) preferences.putUInt("DG2_flow", dg2_flow);
+        if (dd2_ppl != 0) preferences.putUInt("DD2_PPL", dd2_ppl);
+        if (dd2_flow != 0) preferences.putUInt("DD2_flow", dd2_flow);
+        preferences.end();
+    }
+
+    // ===== APPLICATION DES PARAMÈTRES =====
+    correctionManometreA = (int)(calibA * 100);
+    correctionManometreB = (int)(calibB * 100);
+
+    if (dg1_ppl != 0) NbImpulsionsDebitmetre1 = dg1_ppl;
+    if (dg1_flow != 0) maxFlow1 = dg1_flow;
+    if (dd1_ppl != 0) NbImpulsionsDebitmetre2 = dd1_ppl;
+    if (dd1_flow != 0) maxFlow2 = dd1_flow;
     if (dg2_ppl != 0) NbImpulsionsDebitmetre3 = dg2_ppl;
     if (dg2_flow != 0) maxFlow3 = dg2_flow;
     if (dd2_ppl != 0) NbImpulsionsDebitmetre4 = dd2_ppl;
     if (dd2_flow != 0) maxFlow4 = dd2_flow;
-
-    // Type capteur pression
-    pressureSensorType = preferences.getUInt("sensP", 0);  // 0=Gravity (défaut), 1=4-20mA
-
-    // Nouveaux paramètres de calibration pression (mode Tension 3 fils)
-    pressureMaxBar = preferences.getFloat("P_max", 16.0);        // Pression max (bar)
-    pressureVoltageMin = preferences.getFloat("P_Vmin", 0.5);    // Tension min (V)
-    pressureVoltageMax = preferences.getFloat("P_Vmax", 4.5);    // Tension max (V)
-
-    preferences.end();
 
     Serial.print("Type capteur pression: ");
     Serial.println(pressureSensorType == 0 ? "Gravity analogique (0.5-4.5V, 0-16 bar)" : "4-20mA (0-16 bar)");

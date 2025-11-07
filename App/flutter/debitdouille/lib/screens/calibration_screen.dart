@@ -230,7 +230,7 @@ Future<void> _getCoeffs() async {
                   const SizedBox(height: 8),
                   ElevatedButton(
                     onPressed: _sendCoeffs,
-                    child: const Text("Envoyer les coefficients"),
+                    child: const Text("Envoyer la configuration"),
                   ),
                   const SizedBox(height: 20),
                   // Affichage des infos uniquement pour la pression

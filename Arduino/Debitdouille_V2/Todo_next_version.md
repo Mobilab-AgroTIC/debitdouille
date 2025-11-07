@@ -5,6 +5,7 @@
 - détecter les alimentations pour ne pas allumer l'output quand il n'y a pas de 12V in 
 - flyback diode connecteur debitmètre 
 - pourquoi on retrouve du 5V sur le 12V quand on alimente par USB ? 
+- pins Rx et Tx GPS pour le modèle 2 inversés
 
 ## é verifier 
 - Remplacement de l’ESP par une version plus intégrée et avec plus de pins
