@@ -1,0 +1,136 @@
+{
+    "folders": [
+        {
+            "name": "Debitdouille (Root)",
+            "path": "."
+        },
+        {
+            "name": "Arduino - Debitdouille V2",
+            "path": "Arduino/Debitdouille_V2"
+        }
+    ],
+    "settings": {
+        // Paramètres PlatformIO
+        "platformio-ide.autoRebuildAutocompleteIndex": true,
+        "platformio-ide.activateOnlyOnPlatformIOProject": false,
+
+        // Paramètres de l'éditeur
+        "files.associations": {
+            "*.ino": "cpp",
+            "*.h": "cpp",
+            "array": "cpp",
+            "atomic": "cpp",
+            "cctype": "cpp",
+            "clocale": "cpp",
+            "cmath": "cpp",
+            "cstdarg": "cpp",
+            "cstddef": "cpp",
+            "cstdint": "cpp",
+            "cstdio": "cpp",
+            "cstdlib": "cpp",
+            "cstring": "cpp",
+            "ctime": "cpp",
+            "cwchar": "cpp",
+            "cwctype": "cpp",
+            "deque": "cpp",
+            "unordered_map": "cpp",
+            "unordered_set": "cpp",
+            "vector": "cpp",
+            "exception": "cpp",
+            "algorithm": "cpp",
+            "functional": "cpp",
+            "iterator": "cpp",
+            "map": "cpp",
+            "memory": "cpp",
+            "memory_resource": "cpp",
+            "numeric": "cpp",
+            "optional": "cpp",
+            "random": "cpp",
+            "string": "cpp",
+            "string_view": "cpp",
+            "system_error": "cpp",
+            "tuple": "cpp",
+            "type_traits": "cpp",
+            "utility": "cpp",
+            "fstream": "cpp",
+            "initializer_list": "cpp",
+            "iomanip": "cpp",
+            "iosfwd": "cpp",
+            "istream": "cpp",
+            "limits": "cpp",
+            "new": "cpp",
+            "ostream": "cpp",
+            "sstream": "cpp",
+            "stdexcept": "cpp",
+            "streambuf": "cpp",
+            "cinttypes": "cpp",
+            "typeinfo": "cpp"
+        },
+
+        // Exclure les dossiers de compilation de la recherche
+        "files.exclude": {
+            "**/.git": true,
+            "**/.pio": true,
+            "**/node_modules": true
+        },
+
+        "search.exclude": {
+            "**/.git": true,
+            "**/.pio": true,
+            "**/node_modules": true
+        },
+
+        // IntelliSense C/C++
+        "C_Cpp.intelliSenseEngine": "default",
+        "C_Cpp.default.compilerPath": "",
+
+        // Terminal
+        "terminal.integrated.defaultProfile.windows": "PowerShell"
+    },
+    "tasks": {
+        "version": "2.0.0",
+        "tasks": [
+            {
+                "label": "PlatformIO: Build",
+                "type": "shell",
+                "command": "pio run -d Arduino/Debitdouille_V2",
+                "group": {
+                    "kind": "build",
+                    "isDefault": true
+                },
+                "problemMatcher": ["$platformio"]
+            },
+            {
+                "label": "PlatformIO: Upload",
+                "type": "shell",
+                "command": "pio run -d Arduino/Debitdouille_V2 --target upload",
+                "problemMatcher": ["$platformio"]
+            },
+            {
+                "label": "PlatformIO: Clean",
+                "type": "shell",
+                "command": "pio run -d Arduino/Debitdouille_V2 --target clean",
+                "problemMatcher": ["$platformio"]
+            },
+            {
+                "label": "PlatformIO: Monitor",
+                "type": "shell",
+                "command": "pio device monitor -d Arduino/Debitdouille_V2",
+                "problemMatcher": []
+            },
+            {
+                "label": "PlatformIO: Upload & Monitor",
+                "type": "shell",
+                "command": "pio run -d Arduino/Debitdouille_V2 --target upload && pio device monitor -d Arduino/Debitdouille_V2",
+                "problemMatcher": ["$platformio"]
+            }
+        ]
+    },
+    "extensions": {
+        "recommendations": [
+            "platformio.platformio-ide",
+            "ms-vscode.cpptools",
+            "ms-vscode.cpptools-extension-pack"
+        ]
+    }
+}
