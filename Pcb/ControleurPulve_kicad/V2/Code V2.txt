@@ -1,0 +1,17 @@
+Modifications 
+
+- Pin map 
+- LED ESP --> utiliser pour faire un report de n'importe que problème détecté 
+- Allumage des périphérique : 12V output
+- Lecture débitmètre 
+	- méthode 1 : fréquence sur les 4 pins 
+	- méthdode 2 : 4-20 sur mux 
+- Lecture pression 
+	- methode 1 : pin analogique 
+	- methode 2 : mux
+
+- Lib MUX I2C --> intégration ND. 
+
+A tester 
+- Pression 4-20
+- Debit 4-20

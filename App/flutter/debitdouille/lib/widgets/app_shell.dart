@@ -10,13 +10,27 @@ import '../screens/bluetooth_screen.dart';
 import '../screens/settings_screen.dart';
 import '../screens/calibration_screen.dart';
 
-class AppShell extends StatelessWidget {
+class AppShell extends StatefulWidget {
   const AppShell({super.key});
+
+  @override
+  State<AppShell> createState() => _AppShellState();
+}
+
+class _AppShellState extends State<AppShell> {
+  @override
+  void initState() {
+    super.initState();
+    // Planifier l'initialisation après la construction du widget
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final dataProv = context.read<DataProvider>();
+      dataProv.initialize();
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     final settings = context.watch<SettingsProvider>();
-    final dataProv = context.watch<DataProvider>();
 
     Widget body;
     switch (settings.page) {
@@ -40,7 +54,7 @@ class AppShell extends StatelessWidget {
       onPopInvoked: (didPop) {
         // Si un pop a déjà été effectué par le framework, on ne fait rien.
         if (didPop) return;
-        // Sinon, on consomme l’événement et on revient à Home.
+        // Sinon, on consomme l'événement et on revient à Home.
         if (settings.page != AppPage.home) {
           settings.go(AppPage.home);
         }
@@ -49,20 +63,7 @@ class AppShell extends StatelessWidget {
         backgroundColor: AppColors.background,
         appBar: AppBar(
           backgroundColor: Colors.black,
-          title: Row(
-            children: [
-              const Text("", style: TextStyle(color: Colors.white)),
-              const SizedBox(width: 12),
-              StatusDot(alive: dataProv.isAlive),
-              const SizedBox(width: 8),
-              Text(
-                dataProv.connectedDevice != null
-                    ? "Connecté à : ${dataProv.connectedDevice!.platformName}"
-                    : "Non connecté",
-                style: const TextStyle(color: AppColors.dim, fontSize: 14),
-              ),
-            ],
-          ),
+          title: _buildAppBarTitle(),
           actions: [
             Builder(
               builder: (ctx) => IconButton(
@@ -75,31 +76,123 @@ class AppShell extends StatelessWidget {
         ),
         endDrawer: const _EndDrawer(),
         body: body,
-        floatingActionButton: settings.showSimButton
-            ? FloatingActionButton(
-                backgroundColor: Colors.white10,
-                onPressed: () => dataProv.pushSimulatedFrame(settings.pairs),
-                child: const Icon(Icons.bug_report, color: Colors.white),
-              )
-            : null,
-        bottomNavigationBar: settings.showDebug
-            ? Container(
-                padding: const EdgeInsets.all(8),
-                color: Colors.black,
-                child: Text(
-                  dataProv.lastJson ?? "{}",
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: Colors.white70,
-                    fontFamily: "monospace",
-                  ),
-                ),
-              )
-            : null,
+        floatingActionButton: _buildFloatingActionButton(settings),
+        bottomNavigationBar: _buildDebugBar(settings),
       ),
     );
   }
+
+  // 🎯 Widget séparé qui écoute uniquement les propriétés nécessaires pour l'AppBar
+  Widget _buildAppBarTitle() {
+    return Selector<DataProvider, _AppBarState>(
+      selector: (_, dp) => _AppBarState(
+        isAlive: dp.isAlive,
+        isReconnecting: dp.isReconnecting,
+        hasPacketLoss: dp.hasPacketLoss,
+        connectedName: dp.connectedDeviceName,
+        isConnected: dp.connectedDevice != null,
+      ),
+      builder: (_, state, __) {
+        return Row(
+          children: [
+            const Text("", style: TextStyle(color: Colors.white)),
+            const SizedBox(width: 12),
+            StatusDot(
+              alive: state.isAlive,
+              isReconnecting: state.isReconnecting,
+              hasPacketLoss: state.hasPacketLoss,
+            ),
+            const SizedBox(width: 8),
+            Text(
+              state.isReconnecting
+                  ? "Reconnexion en cours..."
+                  : state.hasPacketLoss
+                      ? "Connexion instable"
+                      : state.isConnected
+                          ? "Connecté à : ${state.connectedName ?? 'Appareil inconnu'}"
+                          : "Non connecté",
+              style: const TextStyle(color: AppColors.dim, fontSize: 14),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  // 🎯 FloatingActionButton isolé
+  Widget? _buildFloatingActionButton(SettingsProvider settings) {
+    if (!settings.showSimButton) return null;
+
+    return Selector<DataProvider, VoidCallback>(
+      selector: (_, dp) => () => dp.pushSimulatedFrame(settings.pairs),
+      builder: (_, onPressed, __) {
+        return FloatingActionButton(
+          backgroundColor: Colors.white10,
+          onPressed: onPressed,
+          child: const Icon(Icons.bug_report, color: Colors.white),
+        );
+      },
+    );
+  }
+
+  // 🎯 Barre de debug isolée
+  Widget? _buildDebugBar(SettingsProvider settings) {
+    if (!settings.showDebug) return null;
+
+    return Selector<DataProvider, String?>(
+      selector: (_, dp) => dp.lastJson,
+      builder: (_, lastJson, __) {
+        return Container(
+          padding: const EdgeInsets.all(8),
+          color: Colors.black,
+          child: Text(
+            lastJson ?? "{}",
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: Colors.white70,
+              fontFamily: "monospace",
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+// 📦 Classe immutable pour l'état de l'AppBar
+class _AppBarState {
+  final bool isAlive;
+  final bool isReconnecting;
+  final bool hasPacketLoss;
+  final String? connectedName;
+  final bool isConnected;
+
+  _AppBarState({
+    required this.isAlive,
+    required this.isReconnecting,
+    required this.hasPacketLoss,
+    required this.connectedName,
+    required this.isConnected,
+  });
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is _AppBarState &&
+          isAlive == other.isAlive &&
+          isReconnecting == other.isReconnecting &&
+          hasPacketLoss == other.hasPacketLoss &&
+          connectedName == other.connectedName &&
+          isConnected == other.isConnected;
+
+  @override
+  int get hashCode =>
+      isAlive.hashCode ^
+      isReconnecting.hashCode ^
+      hasPacketLoss.hashCode ^
+      connectedName.hashCode ^
+      isConnected.hashCode;
 }
 
 class _EndDrawer extends StatelessWidget {

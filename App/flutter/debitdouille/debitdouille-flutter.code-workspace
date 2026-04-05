@@ -1,0 +1,31 @@
+{
+  "folders": [
+    {
+      "name": "Flutter App - Debitdouille",
+      "path": "."
+    }
+  ],
+  "settings": {
+    "dart.flutterSdkPath": null,
+    "editor.formatOnSave": true,
+    "editor.rulers": [80],
+    "files.exclude": {
+      "**/.dart_tool": true,
+      "**/.idea": true,
+      "**/build": true
+    },
+    "[dart]": {
+      "editor.formatOnSave": true,
+      "editor.selectionHighlight": false,
+      "editor.suggestSelection": "first",
+      "editor.tabCompletion": "onlySnippets",
+      "editor.wordBasedSuggestions": "off"
+    }
+  },
+  "extensions": {
+    "recommendations": [
+      "dart-code.dart-code",
+      "dart-code.flutter"
+    ]
+  }
+}

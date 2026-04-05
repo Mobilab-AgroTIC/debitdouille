@@ -18,6 +18,15 @@ class _BluetoothScreenState extends State<BluetoothScreen> {
   bool scanning = false;
   String? error;
 
+  @override
+  void initState() {
+    super.initState();
+    // 🔍 Lancer le scan automatiquement au démarrage de l'écran
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _scan();
+    });
+  }
+
   Future<void> _scan() async {
     setState(() { scanning = true; error = null; devices.clear(); });
     try {
@@ -42,8 +51,15 @@ class _BluetoothScreenState extends State<BluetoothScreen> {
     }
   }
 
+  Future<void> _disconnect() async {
+    await context.read<DataProvider>().disconnect();
+  }
+
   @override
   Widget build(BuildContext context) {
+    final dataProv = context.watch<DataProvider>();
+    final isConnected = dataProv.connectedDevice != null;
+
     return Container(
       color: AppColors.background,
       padding: const EdgeInsets.all(16),
@@ -54,6 +70,14 @@ class _BluetoothScreenState extends State<BluetoothScreen> {
               ElevatedButton(
                 onPressed: scanning ? null : _scan,
                 child: Text(scanning ? "Scan..." : "Scanner"),
+              ),
+              const SizedBox(width: 12),
+              ElevatedButton(
+                onPressed: isConnected ? _disconnect : null,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.red.shade700,
+                ),
+                child: const Text("Déconnecter"),
               ),
               const SizedBox(width: 12),
               Text("${devices.length} trouvé(s)", style: const TextStyle(color: Colors.white70)),

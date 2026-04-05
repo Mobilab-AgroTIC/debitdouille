@@ -1,0 +1,18 @@
+V1
+
+- cloutage 
+- piste power 
+- Protection inversion de polarité 
+- Capteur de pression 0-5V => pin ESP 3.3V !!!
+- ESP32 a des moindres capacités analogiques 
+- régulateur moins cher 
+- Besoin Opto SIKA ? version à 4 fils
+- Chanegr empreinte self (introuvable si petit pour 3A !)
+- multi empreinte ESP
+- Multi empreinte GPS 
+
+V2 
+- intergation CMS ESP 
+- intégration CMS GPS ? 
+- Sortie pression Analogique --> sensibilité au bruit EMC ! prendre un capteur 4-20 mA 
+

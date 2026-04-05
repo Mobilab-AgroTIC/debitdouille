@@ -4,6 +4,7 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 import 'utils/constants.dart';
 import 'services/ble_service.dart';
 import 'services/simulation_service.dart';
+import 'services/flow_meter_config_service.dart';
 import 'providers/data_provider.dart';
 import 'providers/settings_provider.dart';
 import 'widgets/app_shell.dart';
@@ -30,10 +31,12 @@ class MyApp extends StatelessWidget {
         ChangeNotifierProvider<SettingsProvider>.value(value: settings),
         Provider<BleService>(create: (_) => BleService()),
         Provider<SimulationService>(create: (_) => SimulationService()),
+        Provider<FlowMeterConfigService>(create: (_) => FlowMeterConfigService()),
         ChangeNotifierProvider<DataProvider>(
           create: (ctx) => DataProvider(
             ble: ctx.read<BleService>(),
             sim: ctx.read<SimulationService>(),
+            flowMeterConfigService: ctx.read<FlowMeterConfigService>(),
           ),
         ),
       ],

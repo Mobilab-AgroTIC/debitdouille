@@ -35,9 +35,9 @@ class HomeScreen extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(child: _debitsColumn("DG", d.DG, settings.pairs, 1.0)),
+                Expanded(child: _debitsColumn("DG", dp, settings.pairs, 1.0)),
                 const SizedBox(width: 16),
-                Expanded(child: _debitsColumn("DD", d.DD, settings.pairs, 1.0)),
+                Expanded(child: _debitsColumn("DD", dp, settings.pairs, 1.0)),
               ],
             ),
 
@@ -56,14 +56,16 @@ class HomeScreen extends StatelessWidget {
     );
   }
 
-  Widget _debitsColumn(String prefix, List<double> values, int pairs, double localScale) {
-    final count = pairs <= values.length ? pairs : values.length;
-    final items = List.generate(count, (i) {
-      final v = values[i];
+  Widget _debitsColumn(String prefix, DataProvider dp, int pairs, double localScale) {
+    final items = List.generate(pairs, (i) {
+      final key = "$prefix${i + 1}";
+      final source = dp.flowMeterConfig.getSource(key);
+      final v = dp.data.getValue(key, source);
+
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: 8.0),
         child: ValueBlock(
-          label: "$prefix${i + 1} (L/min)",
+          label: "$key (L/min)",
           value: v.toStringAsFixed(2),
           unit: "",
           fontScale: localScale,
