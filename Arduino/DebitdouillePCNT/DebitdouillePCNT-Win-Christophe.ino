@@ -19,6 +19,7 @@ TinyGPSPlus gps;
 
 // Constantes
 const unsigned long period = 1000;
+const unsigned long periodPressure = 20;
 const int n = 20; // Nombre de valeurs pour le filtre médian
 unsigned int constDeb1;
 unsigned int constDeb2;
@@ -59,7 +60,7 @@ char value[16];          // Variable to store the part after the ':'
 // Configuration Bluetooth
 //#define USE_PIN // Uncomment this to use PIN during pairing. The pin is specified on the line below
 const char *pin = "1234";
-String device_name = "Debitdouille";
+String device_name = "S21";
 BluetoothSerial SerialBT;
 
 void setupPCNT() {
