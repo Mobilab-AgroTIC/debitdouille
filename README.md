@@ -8,6 +8,6 @@ Ces paramètres sont :
 - la vitesse d'avancement.
 
 Tous ces paramètres sont affichés dans la cabine sur le smartphone (Android) du tractoriste via Bluetooth.
-Débitdouille a été développé par la CA34 et le mobilab AgroTIC dans le cadre du projet Occitanum
+Débitdouille a été développé par la CA34 et le mobilab AgroTIC dans le cadre du projet Occitanum. Il est maintenant largement amélioré par Furgo (furgo.fr)
 
 Le [tutoriel d'installation est disponible sur ce lien ](https://mobilab.agrotic.org/2024/11/28/debitdouille/)
