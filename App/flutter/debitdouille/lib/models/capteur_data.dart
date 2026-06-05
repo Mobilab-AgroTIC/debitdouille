@@ -13,7 +13,8 @@ class CapteurData {
   final List<double> DG_pulse;
   final List<double> DD_pulse;
 
-  final int P_raw_mV; // Tension brute lue par l'ADC en millivolts (pour debug/calibration)
+  final int
+  P_raw_mV; // Tension brute lue par l'ADC en millivolts (pour debug/calibration)
 
   CapteurData({
     required this.ID,
@@ -30,26 +31,27 @@ class CapteurData {
     ID: 0,
     P: 0,
     V: 0,
-    DG_mA: [0,0,0,0],
-    DD_mA: [0,0,0,0],
-    DG_pulse: [0,0,0,0],
-    DD_pulse: [0,0,0,0],
+    DG_mA: [0, 0, 0, 0],
+    DD_mA: [0, 0, 0, 0],
+    DG_pulse: [0, 0, 0, 0],
+    DD_pulse: [0, 0, 0, 0],
   );
 
   factory CapteurData.fromJson(Map<String, dynamic> j) {
-    double _d(dynamic x) => (x is num) ? x.toDouble() : double.tryParse("$x") ?? 0.0;
-    int _i(dynamic x) => (x is int) ? x : int.tryParse("$x") ?? 0;
+    double d(dynamic x) =>
+        (x is num) ? x.toDouble() : double.tryParse("$x") ?? 0.0;
+    int i(dynamic x) => (x is int) ? x : int.tryParse("$x") ?? 0;
     return CapteurData(
-      ID: _i(j["ID"]),
-      P: _d(j["P"]),
-      V: _d(j["V"]),
+      ID: i(j["ID"]),
+      P: d(j["P"]),
+      V: d(j["V"]),
       // Valeurs 4-20mA
-      DG_mA: List<double>.generate(4, (i) => _d(j["DG${i+1}"])),
-      DD_mA: List<double>.generate(4, (i) => _d(j["DD${i+1}"])),
+      DG_mA: List<double>.generate(4, (i) => d(j["DG${i + 1}"])),
+      DD_mA: List<double>.generate(4, (i) => d(j["DD${i + 1}"])),
       // Valeurs pulse
-      DG_pulse: List<double>.generate(4, (i) => _d(j["DG${i+1}p"])),
-      DD_pulse: List<double>.generate(4, (i) => _d(j["DD${i+1}p"])),
-      P_raw_mV: _i(j["P_raw_mV"]),
+      DG_pulse: List<double>.generate(4, (i) => d(j["DG${i + 1}p"])),
+      DD_pulse: List<double>.generate(4, (i) => d(j["DD${i + 1}p"])),
+      P_raw_mV: i(j["P_raw_mV"]),
     );
   }
 
@@ -90,10 +92,11 @@ class CapteurData {
 
   Map<String, dynamic> toJson() => {
     "ID": ID,
-    "P": P, "V": V,
-    for (int i=0;i<4;i++) "DG${i+1}": DG_mA[i],
-    for (int i=0;i<4;i++) "DD${i+1}": DD_mA[i],
-    for (int i=0;i<4;i++) "DG${i+1}p": DG_pulse[i],
-    for (int i=0;i<4;i++) "DD${i+1}p": DD_pulse[i],
+    "P": P,
+    "V": V,
+    for (int i = 0; i < 4; i++) "DG${i + 1}": DG_mA[i],
+    for (int i = 0; i < 4; i++) "DD${i + 1}": DD_mA[i],
+    for (int i = 0; i < 4; i++) "DG${i + 1}p": DG_pulse[i],
+    for (int i = 0; i < 4; i++) "DD${i + 1}p": DD_pulse[i],
   };
 }

@@ -24,7 +24,7 @@ class HomeScreen extends StatelessWidget {
             // Pression (au-dessus des débits) — facteur local 1.0 (tu peux mettre 1.2 si tu veux plus gros)
             ValueBlock(
               label: "Pression",
-              value: d.P.toStringAsFixed(2),
+              value: d.P.toStringAsFixed(settings.decimalsPressure),
               unit: "bar",
               fontScale: 1.0,
             ),
@@ -35,9 +35,9 @@ class HomeScreen extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(child: _debitsColumn("DG", dp, settings.pairs, 1.0)),
+                Expanded(child: _debitsColumn("DG", dp, settings.pairs, 1.0, settings.decimalsFlow)),
                 const SizedBox(width: 16),
-                Expanded(child: _debitsColumn("DD", dp, settings.pairs, 1.0)),
+                Expanded(child: _debitsColumn("DD", dp, settings.pairs, 1.0, settings.decimalsFlow)),
               ],
             ),
 
@@ -46,7 +46,7 @@ class HomeScreen extends StatelessWidget {
             // Vitesse (juste en dessous des débits)
             ValueBlock(
               label: "Vitesse",
-              value: d.V.toStringAsFixed(2),
+              value: d.V.toStringAsFixed(settings.decimalsSpeed),
               unit: "km/h",
               fontScale: 1.0,
             ),
@@ -56,7 +56,7 @@ class HomeScreen extends StatelessWidget {
     );
   }
 
-  Widget _debitsColumn(String prefix, DataProvider dp, int pairs, double localScale) {
+  Widget _debitsColumn(String prefix, DataProvider dp, int pairs, double localScale, int decimals) {
     final items = List.generate(pairs, (i) {
       final key = "$prefix${i + 1}";
       final source = dp.flowMeterConfig.getSource(key);
@@ -66,7 +66,7 @@ class HomeScreen extends StatelessWidget {
         padding: const EdgeInsets.symmetric(vertical: 8.0),
         child: ValueBlock(
           label: "$key (L/min)",
-          value: v.toStringAsFixed(2),
+          value: v.toStringAsFixed(decimals),
           unit: "",
           fontScale: localScale,
         ),

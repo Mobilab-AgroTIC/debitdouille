@@ -89,7 +89,7 @@ class FlowMeterConfig {
       dg2: parseSource(json['DG2']),
       dd2: parseSource(json['DD2']),
       dg3: parseSource(json['DG3']),
-      dd3: parseSource(json['DD4']),
+      dd3: parseSource(json['DD3']),
       dg4: parseSource(json['DG4']),
       dd4: parseSource(json['DD4']),
     );

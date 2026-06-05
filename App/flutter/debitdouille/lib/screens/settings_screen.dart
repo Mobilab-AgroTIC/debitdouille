@@ -66,6 +66,29 @@ class SettingsScreen extends StatelessWidget {
           const Divider(color: Colors.white24, height: 1),
           const SizedBox(height: 24),
 
+          // ---- Précision d'affichage (nombre de décimales) ----
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text("Précision d'affichage", style: sectionLabelStyle),
+              const SizedBox(height: 4),
+              const Text(
+                "Nombre de décimales affichées",
+                style: TextStyle(color: Colors.white54, fontSize: 14),
+              ),
+              const SizedBox(height: 16),
+              _buildDecimalsRow("Pression", s.decimalsPressure, s.setDecimalsPressure),
+              const SizedBox(height: 12),
+              _buildDecimalsRow("Débits", s.decimalsFlow, s.setDecimalsFlow),
+              const SizedBox(height: 12),
+              _buildDecimalsRow("Vitesse", s.decimalsSpeed, s.setDecimalsSpeed),
+            ],
+          ),
+
+          const SizedBox(height: 24),
+          const Divider(color: Colors.white24, height: 1),
+          const SizedBox(height: 24),
+
           // ---- Taille du texte ----
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -190,6 +213,45 @@ class SettingsScreen extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildDecimalsRow(String label, int current, void Function(int) onSelect) {
+    return Row(
+      children: [
+        SizedBox(
+          width: 100,
+          child: Text(
+            label,
+            style: const TextStyle(color: Colors.white, fontSize: 16),
+          ),
+        ),
+        Row(
+          children: List.generate(4, (value) {
+            final isSelected = current == value;
+            return Padding(
+              padding: const EdgeInsets.only(right: 8.0),
+              child: OutlinedButton(
+                style: OutlinedButton.styleFrom(
+                  backgroundColor: isSelected ? Colors.white : Colors.transparent,
+                  side: const BorderSide(color: Colors.white),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  minimumSize: const Size(0, 0),
+                ),
+                onPressed: () => onSelect(value),
+                child: Text(
+                  value.toString(),
+                  style: TextStyle(
+                    fontSize: 16,
+                    color: isSelected ? Colors.black : Colors.white,
+                    fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                  ),
+                ),
+              ),
+            );
+          }),
+        ),
+      ],
     );
   }
 

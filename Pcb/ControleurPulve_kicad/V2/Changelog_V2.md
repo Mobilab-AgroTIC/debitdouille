@@ -89,10 +89,16 @@ Rétrocompatible avec l'ancien système, à l'exception du pin mapping du microc
 ---
 
 ## À prévoir pour la prochaine version V2.1
+BUG
+- Ajouter Zener Diode protection entrée 4-20 : 3.3V 
+- Changer R shunt 4-20 debitmètres (pas pression) : 100R
+- Changer référence diode protection input : chute tension trop élevée (viser 150mV), ou passer sur protection mosfet 
 
+Choix
 - Remplacement de l’ESP par une version plus intégrée et avec plus de pins
 - L’ESP doit pouvoir lire et reporter l’ensemble des tensions de la carte à des fins de dépannage
 - Choix de l’architecture capteur de pression
 - Choix de l’architecture débitmètre
 - Gain de place : dimuntion à 2 debitmètres, les autres sur extension ?
 - connecteurs débitmètres ? 
+- full isolation 12V périphériques (+cher)

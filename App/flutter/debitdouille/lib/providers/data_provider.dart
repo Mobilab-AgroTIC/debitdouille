@@ -10,6 +10,7 @@ import '../models/firmware_info.dart';
 import '../services/ble_service.dart';
 import '../services/simulation_service.dart';
 import '../services/flow_meter_config_service.dart';
+import '../services/moving_average_filter.dart';
 import '../utils/constants.dart';
 
 class DataProvider with ChangeNotifier {
@@ -18,6 +19,8 @@ class DataProvider with ChangeNotifier {
   final FlowMeterConfigService flowMeterConfigService;
 
   CapteurData data = CapteurData.zero();
+  // Filtre de moyenne glissante pour stabiliser l'affichage des valeurs.
+  final MovingAverageFilter _filter = MovingAverageFilter(window: 5);
   FlowMeterConfig flowMeterConfig = const FlowMeterConfig();
   FirmwareInfo firmwareInfo = FirmwareInfo.empty();
   String? lastJson;                   // trame brute la plus récente
@@ -148,6 +151,7 @@ class DataProvider with ChangeNotifier {
   /// 🔄 Réinitialise toutes les données à zéro lors d'une déconnexion
   void _resetData() {
     data = CapteurData.zero();
+    _filter.reset();
     lastTick = null;
     lastJson = null;
     _aliveTimer?.cancel();
@@ -180,7 +184,8 @@ class DataProvider with ChangeNotifier {
       }
 
       // Sinon, c'est une trame data normale
-      data = CapteurData.fromJson(j);
+      // On applique la moyenne glissante sur les valeurs brutes avant affichage.
+      data = _filter.process(CapteurData.fromJson(j));
       lastTick = DateTime.now();
 
       // 📊 Détection de perte de trames via suivi glissant des IDs
