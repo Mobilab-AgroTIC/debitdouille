@@ -13,8 +13,8 @@
 #include <Wire.h>
 #include <TinyGPS++.h>
 #include <Preferences.h>
-#if DEBITDOUILLE_VERSION == V2_S3
-    #include "driver/pcnt.h"  // PCNT uniquement pour ESP32-S3
+#if DEBITDOUILLE_VERSION == V2_S3 || DEBITDOUILLE_VERSION == V1
+    #include "driver/pcnt.h"  // PCNT pour ESP32-S3 et V1
 #endif
 #include <Adafruit_ADS1X15.h>
 #include <ArduinoJson.h>
@@ -98,10 +98,10 @@ bool oldDeviceConnected = false;
 #define PIN_PRESSURE 34
 #define RXD2 16
 #define TXD2 17
-#define DEBITMETRE1_PIN 32
-#define DEBITMETRE2_PIN 33
+#define DEBITMETRE1_PIN 32//Gauche
+#define DEBITMETRE2_PIN 12//NOT USED
 #define DEBITMETRE3_PIN 13//NOT USED
-#define DEBITMETRE4_PIN 12//NOT USED
+#define DEBITMETRE4_PIN 33//Droit
 #define PIN_PWR_12V_OUT 14//NOT USED
 #define PIN_LED         2
 #define PIN_SDA         21  // I2C SDA par défaut ESP32
@@ -142,7 +142,7 @@ bool gpsPinsSwapped = false;       // Indicateur si les pins ont été inversés
 unsigned long lastGpsDataTime = 0; // Timestamp de la dernière donnée GPS valide
 
 // Variables pour comptage des impulsions
-#if DEBITDOUILLE_VERSION == V2_S3
+#if DEBITDOUILLE_VERSION == V2_S3 || DEBITDOUILLE_VERSION == V1
     // PCNT pour ESP32-S3 (4 canaux)
     pcnt_unit_t pcntUnit1 = PCNT_UNIT_0;
     pcnt_unit_t pcntUnit2 = PCNT_UNIT_1;
@@ -396,7 +396,7 @@ void setupBLE() {
 }
 
 void setupPulseCounter() {
-#if DEBITDOUILLE_VERSION == V2_S3
+#if DEBITDOUILLE_VERSION == V2_S3 || DEBITDOUILLE_VERSION == V1
     // Configuration des pull-ups pour stabilité (comme les interruptions)
     pinMode(DEBITMETRE1_PIN, INPUT_PULLUP);
     pinMode(DEBITMETRE2_PIN, INPUT_PULLUP);
@@ -520,7 +520,7 @@ void taskReadPulseCounters(void *pvParameters) {
         uint32_t count3_local = 0;
         uint32_t count4_local = 0;
 
-#if DEBITDOUILLE_VERSION == V2_S3
+#if DEBITDOUILLE_VERSION == V2_S3 || DEBITDOUILLE_VERSION == V1
         // Lecture PCNT pour ESP32-S3 (4 canaux)
         int16_t pcnt1, pcnt2, pcnt3, pcnt4;
         pcnt_get_counter_value(pcntUnit1, &pcnt1);

@@ -21,25 +21,29 @@ TinyGPSPlus gps;
 #define RXD2 16
 #define TXD2 17
 
-unsigned long startMillis;
-unsigned long currentMillis;
+unsigned long startMillis;              //Flow start time
+unsigned long currentMillis;            //Flow current time
 const unsigned long period = 1000;
-unsigned long startMillisPressure;
-unsigned long currentMillisPressure;
+unsigned long startMillisPressure;      //Pressure start time
+unsigned long currentMillisPressure;    //Pressure current time
 const unsigned long periodPressure = 20;
 String  bluetoothMsg = "";  //Message sent through Bluetooth
-String messageRecu;
-unsigned int valeurRecue;
+String messageRecu;         //Message received through Bluetooth
+unsigned int valeurRecue;   //Value received through Bluetooth
 
 //#define USE_PIN // Uncomment this to use PIN during pairing. The pin is specified on the line below
 const char *pin = "1234"; // Change this to more secure PIN.
 
+<<<<<<< Updated upstream
+=======
+String device_name = "Calvet";    //Bluetooth connection name
+>>>>>>> Stashed changes
 
 int calib = 415;
 
 // Flowmeter
-const byte debitmetre1 = 33; // broche utilisée pour déclencher l'interruption du debitmètre 1
-const byte debitmetre2 = 32; // broche utilisée pour déclencher l'interruption du debitmètre 1
+const byte debitmetre1 = 32; // broche utilisée pour déclencher l'interruption du debitmètre 1
+const byte debitmetre2 = 33; // broche utilisée pour déclencher l'interruption du debitmètre 1
 volatile long nbPulse1 = 0;  // compteur d'impulsions débitmètre 1
 volatile long nbPulse2 = 0;  // compteur d'impulsions débitmètre 2
 byte pulses1;
@@ -49,8 +53,8 @@ long NombreDimpulsions2 = 0;
 float debit1;
 float debit2;
 unsigned long timer;
-int NbImpulsionsDebitmetre1 = 1000;  //Pulses debitmetre gauche
-int NbImpulsionsDebitmetre2 = 1000;  //Pulses debitmetre droit
+int NbImpulsionsDebitmetre1 = 4000;  //Pulses debitmetre gauche
+int NbImpulsionsDebitmetre2 = 4000;  //Pulses debitmetre droit
 int correctionManometreA = 70;  //Correction manometreA (coeff)
 int correctionManometreB = 70;  //Correction manometre (constante)
 
@@ -105,8 +109,8 @@ void setup() {
   pinMode(debitmetre1, INPUT_PULLUP);
   pinMode(debitmetre2, INPUT_PULLUP);
   // Mettre la broche du débimetre en interrupt, assignation de la fonction comptage et réglage en FALLING (NPN)
-  attachInterrupt(digitalPinToInterrupt(debitmetre1), comptage1, CHANGE);  // a chaque interruption lance comptage1
-  attachInterrupt(digitalPinToInterrupt(debitmetre2), comptage2, CHANGE);  // a chaque interruption lance comptage2
+  attachInterrupt(digitalPinToInterrupt(debitmetre1), comptage1, RISING);  // a chaque interruption lance comptage1
+  attachInterrupt(digitalPinToInterrupt(debitmetre2), comptage2, RISING);  // a chaque interruption lance comptage2
 
   //Récupération des constantes et stockage
   preferences.begin("constantes", false);
@@ -146,8 +150,8 @@ if(currentMillis - startMillis >= period) // Calcule et envoie toutes les 1 seco
         
     // 1000 pulse = 1L
     // L/min
-    debit1 = 60000.0 / (currentMillis - startMillis) * pulses1 / NbImpulsionsDebitmetre1/2;
-    debit2 = 60000.0 / (currentMillis - startMillis) * pulses2 / NbImpulsionsDebitmetre2/2;
+    debit1 = 60000.0 / (currentMillis - startMillis) * pulses1 / NbImpulsionsDebitmetre1;
+    debit2 = 60000.0 / (currentMillis - startMillis) * pulses2 / NbImpulsionsDebitmetre2;
 
     unsigned long tempsPasse = currentMillis - startMillis;
 /*    Serial.print("Temps passe : ");
