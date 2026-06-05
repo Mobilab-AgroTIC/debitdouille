@@ -5,13 +5,13 @@
 class AppVersion {
   // Version sémantique de l'application
   static const String major = '2';
-  static const String minor = '1';
-  static const String patch = '0';
+  static const String minor = '0';
+  static const String patch = '2';
 
   // Numéro de build (format: YYYYMMDDHHmm)
   // À mettre à jour manuellement avant chaque compilation importante
   // ou automatiquement via un script de build
-  static const String buildNumber = '202501051430'; // 5 janvier 2025, 14:30
+  static const String buildNumber = '202606051000'; // 05/06/2026 10:00
 
   // Version complète
   static String get version => '$major.$minor.$patch';

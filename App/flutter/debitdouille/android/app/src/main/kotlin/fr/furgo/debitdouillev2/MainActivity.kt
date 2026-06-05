@@ -1,4 +1,4 @@
-package com.example.debitdouille_v2
+package fr.furgo.debitdouillev2
 
 import io.flutter.embedding.android.FlutterActivity
 

@@ -143,15 +143,29 @@ class _AppShellState extends State<AppShell> {
       selector: (_, dp) => dp.lastJson,
       builder: (_, lastJson, __) {
         return Container(
-          padding: const EdgeInsets.all(8),
           color: Colors.black,
-          child: Text(
-            lastJson ?? "{}",
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              color: Colors.white70,
-              fontFamily: "monospace",
+          // SafeArea : évite que le texte passe sous les boutons de
+          // navigation système Android (en bas de l'écran).
+          child: SafeArea(
+            top: false,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+              // Hauteur bornée + scroll : on voit plusieurs lignes sans jamais
+              // tronquer la trame, même quand elle contient beaucoup de clés.
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: 90),
+                child: SingleChildScrollView(
+                  child: Text(
+                    lastJson ?? "{}",
+                    style: const TextStyle(
+                      color: Colors.white70,
+                      fontFamily: "monospace",
+                      fontSize: 10,
+                      height: 1.3,
+                    ),
+                  ),
+                ),
+              ),
             ),
           ),
         );

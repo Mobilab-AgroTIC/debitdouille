@@ -876,11 +876,22 @@ void taskSendBLE(void *pvParameters) {
             doc["DD2"] = serialized(String(local_debit4_420, 2));  // Débitmètre Droit 2 (ADS canal 3)
 
             // Débitmètres - Valeurs PCNT (suffixe "p" pour pulse counter)
+#if DEBITDOUILLE_VERSION == V1
+            // V1 : seules les pins 32 (PCNT1) et 33 (PCNT2) sont câblées.
+            // Câblage utilisateur : Gauche sur pin 32, Droit sur pin 33.
+            // On route donc le canal droit (PCNT2) vers DD1p (et non DG2p) pour
+            // afficher correctement la paire DG1 (gauche) / DD1 (droit) dans l'app.
+            doc["DG1p"] = serialized(String(local_debit1, 2));     // Débitmètre Gauche 1 (PCNT1, pin 32)
+            doc["DD1p"] = serialized(String(local_debit2, 2));     // Débitmètre Droit 1 (PCNT2, pin 33)
+            doc["DG2p"] = serialized(String(local_debit3, 2));     // Non câblé sur V1 (PCNT3)
+            doc["DD2p"] = serialized(String(local_debit4, 2));     // Non câblé sur V1 (PCNT4)
+#else
             // Mapping: DG1=PCNT1, DG2=PCNT2, DD1=PCNT4, DD2=PCNT3
             doc["DG1p"] = serialized(String(local_debit1, 2));     // Débitmètre Gauche 1 (PCNT1)
             doc["DG2p"] = serialized(String(local_debit2, 2));     // Débitmètre Gauche 2 (PCNT2)
             doc["DD1p"] = serialized(String(local_debit4, 2));     // Débitmètre Droit 1 (PCNT4)
             doc["DD2p"] = serialized(String(local_debit3, 2));     // Débitmètre Droit 2 (PCNT3)
+#endif
 
             // GPS (optionnel - champs supplémentaires ignorés par l'app)
             doc["SAT"] = serialized(String(local_sat, 0));
