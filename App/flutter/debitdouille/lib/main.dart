@@ -8,9 +8,13 @@ import 'services/flow_meter_config_service.dart';
 import 'providers/data_provider.dart';
 import 'providers/settings_provider.dart';
 import 'widgets/app_shell.dart';
+import 'utils/app_version.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Charge la version depuis le pubspec (affichée dans l'écran Paramètres).
+  await AppVersion.init();
 
   WakelockPlus.enable();
 

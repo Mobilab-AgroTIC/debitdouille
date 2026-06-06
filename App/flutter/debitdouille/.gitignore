@@ -49,3 +49,16 @@ app.*.map.json
 **/android/app/upload-keystore.jks
 **/android/app/*.jks
 **/android/app/*.keystore
+
+# fastlane - artefacts générés (ne pas committer)
+**/fastlane/report.xml
+**/fastlane/Preview.html
+**/fastlane/screenshots
+**/fastlane/test_output
+**/fastlane/README.md
+
+# Clés de compte de service Google Play - DO NOT COMMIT!
+**/*GooglePlayConsoleAPI*.json
+**/play-store-*.json
+**/service-account*.json
+fastlane_test.sh

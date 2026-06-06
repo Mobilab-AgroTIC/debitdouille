@@ -177,8 +177,8 @@ class SettingsScreen extends StatelessWidget {
                 const SizedBox(height: 16),
               ],
 
-              // Informations version Flutter
-              _buildInfoRow("Version Flutter", "${AppVersion.version} [${AppVersion.buildDate} ${AppVersion.buildTime}]", smallLabelStyle),
+              // Informations version Flutter (lue depuis le pubspec + date de build injectée)
+              _buildInfoRow("Version app Flutter", AppVersion.displayVersion, smallLabelStyle),
               const SizedBox(height: 16),
 
               // Bouton pour requêter les informations hardware
